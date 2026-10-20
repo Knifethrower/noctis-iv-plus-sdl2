@@ -20,6 +20,22 @@
 #include "platform.h"
 #include "detmath.h"
 
+// The screen: 320 x 200 as on DOS. SW grows up to SW_MAX to fill wider
+// displays (Hor+: more of the view at the sides, the same height).
+#define SW_MAX 480
+#define SH 200
+extern int32_t SW;
+
+// Offset into the screen buffer. DOS wrapped them at 64 KB, which some
+// drawing relies on at 320; wider screens send what is off the screen to a
+// spare byte after it.
+static inline uint32_t scr_ofs(int32_t i) {
+    if (SW == 320) {
+        return (uint16_t) i;
+    }
+    return (uint32_t) i < (uint32_t) (SW * SH) ? (uint32_t) i : (uint32_t) (SW * SH + 8);
+}
+
 /*
 
     Definitions for Noctis.
@@ -50,7 +66,7 @@
 //           screen update buffer.
 #define oc_bytes 40000 //   objectschart    map objects on the surface;
 //           atmospheric overlay.
-#define sc_bytes 65540 //   adapted         the hidden video page?�
+#define sc_bytes (SW_MAX * SH + 64) //   adapted         the hidden video page?�
 //          2 bytes (support for polymap)
 //           would give 64002. But I extended
 //          it to 64Kb + 4 bytes to avoid it
@@ -95,18 +111,18 @@
 
 // Limits, relative to the center of the screen, for 3D sticks.
 
-#define stk_lbx -150
+#define stk_lbx (10 - SW / 2)
 #define stk_lby -90
-#define stk_ubx 160
+#define stk_ubx (SW / 2)
 #define stk_uby 90
 
 // Working parameters for "tdpolygs.h", the polygonal 3D library.
 
 #define VERTEXES_PER_POLYGON 4
 
-#define VIEW_WIDTH 306
+#define VIEW_WIDTH (SW - 14)
 #define VIEW_HEIGHT 180
-#define VIEW_X_CENTER 158
+#define VIEW_X_CENTER (SW / 2 - 2)
 #define VIEW_Y_CENTER 100
 
 #define lbx ((-VIEW_WIDTH / 2) + VIEW_X_CENTER)

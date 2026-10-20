@@ -1,6 +1,6 @@
 #include "noctis-d.h"
 
-extern uint16_t QUADWORDS;
+extern uint32_t QUADWORDS;
 extern uint8_t *adapted;
 extern int16_t get_key();
 extern bool is_key();
@@ -157,7 +157,7 @@ extern int8_t stspeed;
 extern int8_t elight;
 extern uint16_t gl_start;
 extern uint16_t point;
-extern uint16_t vptr;
+extern uint32_t vptr;
 extern int16_t infoarea;
 extern int16_t s_control;
 extern int16_t s_command;
@@ -318,7 +318,7 @@ extern void lens_flares_for(double cam_x, double cam_y, double cam_z,
                             double xlight, double ylight, double zlight,
                             double interval, int16_t added, int8_t on_hud,
                             int8_t condition, int16_t xshift, int16_t yshift);
-extern void single_pixel_at_ptr(uint16_t offset, uint8_t pixel_color);
+extern void single_pixel_at_ptr(uint32_t offset, uint8_t pixel_color);
 extern int8_t far_pixel_at(double xlight, double ylight, double zlight,
                            double radii, uint8_t unconditioned_color);
 extern uint32_t *digimap2;

@@ -108,11 +108,11 @@ void segment(int32_t xp, int32_t yp, int32_t xa, int32_t ya) {
 
     if (xp == xa) {
         if (ya >= yp) {
-            pi = 320 * yp + xp;
-            pf = 320 * (ya + 1);
+            pi = SW * yp + xp;
+            pf = SW * (ya + 1);
         } else {
-            pi = 320 * ya + xp;
-            pf = 320 * (yp + 1);
+            pi = SW * ya + xp;
+            pf = SW * (yp + 1);
         }
 
         while (pi < pf) {
@@ -171,7 +171,7 @@ void segment(int32_t xp, int32_t yp, int32_t xa, int32_t ya) {
         global_x += a;
         global_y += b;
 
-        adapted[320 * line + col] = 255;
+        adapted[SW * line + col] = 255;
     }
 }
 
@@ -369,7 +369,7 @@ void poly3d(const float *x, const float *y, const float *z, uint16_t nrv,
         memcpy(ultima_z, rzf, nrv * sizeof(float));
     } else {
         // Convert points behind the observer compared to the screen plane
-        uint16_t fakedi = 0;
+        uint32_t fakedi = 0;
         for (uint16_t vr = 0; vr < nrv; vr++) {
             if (rwf[vr] != 0) {
                 ultima_x[fakedi / 4] = rxf[vr];
@@ -510,7 +510,7 @@ void poly3d(const float *x, const float *y, const float *z, uint16_t nrv,
         min_y = lby;
     }
 
-    uint16_t fakedi = 0;
+    uint32_t fakedi = 0;
 
     if (!oob)
         goto drawb;
@@ -847,14 +847,14 @@ drawb:
     if (!flares) {
         if (min_y == max_y) {
             if (min_x == max_x) {
-                adapted[min_x + 320 * min_y] = colore;
+                adapted[min_x + SW * min_y] = colore;
             } else {
-                ptr = max_x + 320 * min_y;
+                uint32_t p = max_x + SW * min_y;
 
                 while (max_x >= min_x) {
-                    adapted[ptr] = colore;
+                    adapted[p] = colore;
                     max_x--;
-                    ptr--;
+                    p--;
                 }
             }
 
@@ -870,19 +870,20 @@ drawb:
 
     segment(mp[fakedi], mp[fakedi + 1], mp[0], mp[1]);
     // Starting Pixels
-    uint16_t segmptr = 320 * min_y + min_x;
+    uint32_t segmptr = SW * min_y + min_x;
     // Arrival pixels
-    uint16_t lim_y = 320 * max_y + min_x;
-    uint16_t lim_x = segmptr + max_x - min_x;
+    uint32_t lim_y = SW * max_y + min_x;
+    uint32_t lim_x = segmptr + max_x - min_x;
     uint16_t bytes = lim_x - segmptr + 2;
 
-    uint16_t loc0, loc1, tempBytes, tinkywinky, laalaa;
+    uint32_t loc0, loc1;
+    uint16_t tempBytes, tinkywinky, laalaa;
     uint32_t tempfakedi;
     uint8_t dipsy, po;
 
     switch (flares) {
     case 0:
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += 320) {
+        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
             tempBytes  = bytes;
             tempfakedi = fakedi;
 
@@ -909,7 +910,7 @@ drawb:
                     ;
 
                 tempfakedi--;
-                tempfakedi = tempfakedi > 64000 ? 64000 : tempfakedi;
+                tempfakedi = tempfakedi > (uint32_t) (SW * SH) ? (uint32_t) (SW * SH) : tempfakedi;
                 memset(&adapted[loc0], colore, tempfakedi - loc0);
             } else {
                 loc1--;
@@ -920,7 +921,7 @@ drawb:
 
     case 1:
         colore &= 0x3Fu;
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += 320) {
+        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
             tempBytes  = bytes;
             tempfakedi = fakedi;
 
@@ -982,7 +983,7 @@ drawb:
         }
         break;
     case 2:
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += 320) {
+        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
             tempBytes  = bytes;
             tempfakedi = fakedi;
 
@@ -1013,9 +1014,9 @@ drawb:
                 tempfakedi = loc0;
 
                 for (; tinkywinky > 0; tempfakedi++, tinkywinky--) {
-                    tempfakedi = tempfakedi > 64000 ? 64000 : tempfakedi;
+                    tempfakedi = tempfakedi > (uint32_t) (SW * SH) ? (uint32_t) (SW * SH) : tempfakedi;
                     if (adapted[tempfakedi] == 0xFF) {
-                        dipsy = adapted[tempfakedi - 321];
+                        dipsy = adapted[tempfakedi - (SW + 1)];
                         dipsy &= 0x3Fu;
                         dipsy |= 0x40u;
                         adapted[tempfakedi] = dipsy;
@@ -1032,9 +1033,9 @@ drawb:
             } else {
                 loc1--;
                 for (tempfakedi = loc0; tempfakedi < loc1; tempfakedi++) {
-                    dipsy = adapted[tempfakedi - 321];
+                    dipsy = adapted[tempfakedi - (SW + 1)];
                     if (dipsy == 0xFF) {
-                        dipsy = adapted[tempfakedi - 642];
+                        dipsy = adapted[tempfakedi - (2 * SW + 2)];
                     }
 
                     dipsy &= 0x3Fu;
@@ -1046,7 +1047,7 @@ drawb:
         break;
         // effetto flares = 3 spostato a "polymap"
     case 4:
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += 320) {
+        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
             tempBytes  = bytes;
             tempfakedi = fakedi;
 
@@ -1497,12 +1498,12 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
 
     // Pre-work assignments.
     int32_t tempu = 0, tempv = 0;
-    uint16_t tax = 0, tbx = 0, tdx = 0, tbp = 0, fakedi = 0, fakesi = 0,
-             tempfakedi = 0, reallytempfakedi = 0;
+    uint16_t tax = 0, tbx = 0, tdx = 0, tbp = 0, fakesi = 0;
+    int32_t fakedi = 0, tempfakedi = 0, reallytempfakedi = 0;
     uint8_t tcl = 0, tch = 0, tbl = 0, tbh = 0, tah = 0, tal = 0, tdh = 0,
             tdl = 0, tempch = 0;
-    adapted[0xFA00] = tinta;
-    adapted[0xFA01] = escrescenze;
+    adapted[SW * SH + 16] = tinta;
+    adapted[SW * SH + 17] = escrescenze;
 
     // Tracking cycle. (NOTE: This makes no sense.)
     for (uint32_t i = min_y; i <= max_y;) {
@@ -1519,7 +1520,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         v = x86_i32(round((_y * tempYsize) * k4));
 
         sections = fpart[i] - ipart[i];
-        fakedi   = 320 * i + ipart[i] -
+        fakedi   = SW * i + ipart[i] -
                  4; // i * 320 + ipart[i] - 4; // NOTE: Fudge factor to account
                     // for loss of offset on adapted.
 
@@ -1587,7 +1588,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tbh = tdh;
         fakedi++;
         tbl = tah;
-        tch = adapted[0xFA00];
+        tch = adapted[SW * SH + 16];
         tbx = (((uint16_t) tbh) << 8u) + tbl;
         tch += txtr[(uint16_t)(tbx - 4)]; // NOTE; Fudge factor to account for
                                           // loss of offset on txtr.
@@ -1658,7 +1659,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tax += tbp;
         tbx = (((uint16_t) tbh) << 8u) + tbl;
         tch += txtr[(uint16_t)(tbx - 4)];
-        tch += adapted[0xFA00];
+        tch += adapted[SW * SH + 16];
         tdx += fakesi;
         tch >>= 1u;
         adapted[fakedi + 3] &= 0xC0u;
@@ -1675,7 +1676,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tbh = tdh;
         fakedi++;
         tbl = tah;
-        tch = adapted[0xFA00];
+        tch = adapted[SW * SH + 16];
         tbx = (((uint16_t) tbh) << 8u) + tbl;
         tch += txtr[(uint16_t)(tbx - 4)];
         tax += tbp;
@@ -1685,15 +1686,15 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tch &= 0x07u;
 
     bmpm320:
-        fakedi -= 320;
+        fakedi -= SW;
         tch--;
         if (!(((uint8_t)(tch >> 7u)) & 1u))
             goto bmpm320;
         tch = tempch;
-        tch -= adapted[0xFA00];
-        tch += adapted[0xFA01];
+        tch -= adapted[SW * SH + 16];
+        tch += adapted[SW * SH + 17];
         tch += txtr[(uint16_t)(tbx - 4)];
-        adapted[fakedi + 640 + 3] = tch;
+        adapted[scr_ofs(fakedi + 2 * SW + 3)] = tch;
         fakedi                    = tempfakedi;
         tdx += fakesi;
         tcl--;
@@ -1768,7 +1769,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tbh = tdh;
         fakedi += 2;
         tbl = tah;
-        tch = adapted[0xFA00];
+        tch = adapted[SW * SH + 16];
         tbx = (((uint16_t) tbh) << 8u) + tbl;
         tch += txtr[(uint16_t)(tbx - 4)]; // NOTE; Fudge factor to account for
                                           // loss of offset on txtr.
@@ -1839,7 +1840,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tax += tbp;
         tbx = (((uint16_t) tbh) << 8u) + tbl;
         tch += txtr[(uint16_t)(tbx - 4)];
-        tch += adapted[0xFA00];
+        tch += adapted[SW * SH + 16];
         tdx += fakesi;
         tch >>= 1u;
         adapted[fakedi + 2] &= 0xC0u;
@@ -1858,7 +1859,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tbh = tdh;
         fakedi += 2;
         tbl = tah;
-        tch = adapted[0xFA00];
+        tch = adapted[SW * SH + 16];
         tbx = (((uint16_t) tbh) << 8u) + tbl;
         tch += txtr[(uint16_t)(tbx - 4)];
         tax += tbp;
@@ -1869,16 +1870,16 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tch &= 0x07u;
 
     c_bmpm320:
-        fakedi -= 320;
+        fakedi -= SW;
         tch--;
         if (!(((uint8_t)(tch >> 7u)) & 1u))
             goto c_bmpm320;
         tch = tempch;
-        tch -= adapted[0xFA00];
-        tch += adapted[0xFA01];
+        tch -= adapted[SW * SH + 16];
+        tch += adapted[SW * SH + 17];
         tch += txtr[(uint16_t)(tbx - 4)];
-        adapted[fakedi + 640 + 2] = tch;
-        adapted[fakedi + 640 + 3] = tch;
+        adapted[fakedi + 2 * SW + 2] = tch;
+        adapted[scr_ofs(fakedi + 2 * SW + 3)] = tch;
         fakedi                    = tempfakedi;
         tdx += fakesi;
         tcl--;

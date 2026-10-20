@@ -40,7 +40,8 @@
 
 // Date and specific functions imported from ASSEMBLY.H
 
-uint16_t QUADWORDS = 16000;
+uint32_t QUADWORDS = 16000;
+int32_t SW = 320;
 
 // Video memory. Because Noctis was originally written to use Mode 0x13, this
 // represents a sequence of 64,000 color indices.
@@ -144,7 +145,7 @@ void area_clear(uint8_t *dest, int16_t x, int16_t y, int16_t x2, int16_t y2,
 
     for (int16_t xPos = x; xPos < x + l; xPos++) {
         for (int16_t yPos = y; yPos < y + h; yPos++) {
-            uint16_t netIndex = (yPos * 320) + xPos;
+            uint32_t netIndex = scr_ofs(yPos * SW + xPos);
             dest[netIndex]    = pattern;
         }
     }
@@ -205,11 +206,11 @@ void psmooth_grays(uint8_t *target) {
 // Produces the fading effect seen during vimana flight.
 void pfade(uint8_t *target, uint16_t segshift, uint8_t speed) {
     // Don't know why count is set as it is.
-    uint16_t count   = (QUADWORDS - 80u) << 2u;
-    uint8_t *shifted = (target + segshift * 16);
+    uint32_t count   = (QUADWORDS - SW / 4) << 2u;
+    uint8_t *shifted = target + segshift * 16 / 320 * SW;
     // Quasi-offset might need to be cleared.
 
-    for (uint16_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count; i++) {
         uint8_t color = shifted[i];
         color &= 0x3Fu;
 
@@ -226,16 +227,15 @@ void pfade(uint8_t *target, uint16_t segshift, uint8_t speed) {
 // Color version: 4 shades of 64 intensity each.
 void psmooth_64(uint8_t *target, uint16_t segshift) {
     // Who knows why this is offset as it is... Definitely not me.
-    uint16_t count = (QUADWORDS - 80u) << 2u;
-    // We might need to align the shifted pointer to a 16 byte interval to match
-    // the former offset clearing. Sketchy.
-    uint8_t *shifted = (target + (segshift * 16));
+    uint32_t count = (QUADWORDS - SW / 4) << 2u;
+    // segshift: 16-byte paragraphs of a 320 screen.
+    uint8_t *shifted = target + segshift * 16 / 320 * SW;
 
     uint8_t avg, orig;
-    for (uint16_t i = 0; i < count; i++) {
-        orig = shifted[i + 320] & 0xC0u;
-        avg  = (((shifted[i + 320] & 0x3Fu) + (shifted[i + 640] & 0x3Fu)) +
-               ((shifted[i + 321] & 0x3Fu) + (shifted[i + 641] & 0x3Fu))) /
+    for (uint32_t i = 0; i < count; i++) {
+        orig = shifted[i + SW] & 0xC0u;
+        avg  = (((shifted[i + SW] & 0x3Fu) + (shifted[i + 2 * SW] & 0x3Fu)) +
+               ((shifted[i + SW + 1] & 0x3Fu) + (shifted[i + 2 * SW + 1] & 0x3Fu))) /
               4;
 
         shifted[i] = avg | orig;
@@ -249,9 +249,9 @@ void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
     int32_t x1 = cx - r, y1 = cy - r;
     int32_t x2 = cx + r, y2 = cy + r;
     int32_t px, py, rs = r * r;
-    uint16_t cp;
+    uint32_t cp;
 
-    if (r <= 0 || x1 > 318 || y1 > 198 || x2 < 0 || y2 < 0) {
+    if (r <= 0 || x1 > SW - 2 || y1 > 198 || x2 < 0 || y2 < 0) {
         return;
     }
 
@@ -259,8 +259,8 @@ void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
         y1 = 0;
     }
 
-    if (x2 > 318) {
-        x2 = 318;
+    if (x2 > SW - 2) {
+        x2 = SW - 2;
     }
 
     if (y2 > 198) {
@@ -278,7 +278,7 @@ void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
             x1 = 0;
         }
 
-        cp = (320 * y1) + x1;
+        cp = scr_ofs(SW * y1 + x1);
 
         if (diffuse) {
             while (x1 <= x2) {
@@ -287,8 +287,8 @@ void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
 
                     colors[0] = target[cp];
                     colors[1] = target[cp + 1];
-                    colors[2] = target[cp + 320];
-                    colors[3] = target[cp + 321];
+                    colors[2] = target[cp + SW];
+                    colors[3] = target[cp + SW + 1];
 
                     memcpy(colormasks, colors, 4 * sizeof(uint8_t));
                     for (unsigned char &colormask : colormasks) {
@@ -315,8 +315,8 @@ void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
 
                     target[cp]       = colors[0];
                     target[cp + 1]   = colors[1];
-                    target[cp + 320] = colors[2];
-                    target[cp + 321] = colors[3];
+                    target[cp + SW] = colors[2];
+                    target[cp + SW + 1] = colors[3];
                 }
                 cp++;
                 px++;
@@ -329,8 +329,8 @@ void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
 
                     colors[0] = target[cp];
                     colors[1] = target[cp + 1];
-                    colors[2] = target[cp + 320];
-                    colors[3] = target[cp + 321];
+                    colors[2] = target[cp + SW];
+                    colors[3] = target[cp + SW + 1];
 
                     uint8_t temp = colors[0];
                     temp &= 0xC0u;
@@ -478,7 +478,7 @@ int8_t stspeed    = 0;
 int8_t elight     = 0;
 uint16_t gl_start = 0;
 uint16_t point;
-uint16_t vptr;
+uint32_t vptr;
 int16_t infoarea  = 0;
 int16_t s_control = 1;
 int16_t s_command = 0;
@@ -1016,16 +1016,16 @@ void resetfx() { flares = previous_flares_value; }
 // Tracing sticks (2D).
 void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
     int32_t a, b, L;
-    uint16_t pi, pf;
-    uint16_t offset = 0;
+    uint32_t pi, pf;
+    uint32_t offset = 0;
 
     if (xp == xa) {
         if (ya >= yp) {
-            pi = 320 * yp + xp;
-            pf = 320 * (ya + 1);
+            pi = SW * yp + xp;
+            pf = SW * (ya + 1);
         } else {
-            pi = 320 * ya + xp;
-            pf = 320 * (yp + 1);
+            pi = SW * ya + xp;
+            pf = SW * (yp + 1);
         }
 
         pi += offset;
@@ -1039,7 +1039,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
                 adapted[offset]     = 0x3E;
                 adapted[offset + 1] = 0x00;
 
-                offset += 320;
+                offset += SW;
             }
             break;
         case 1:
@@ -1055,7 +1055,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
                 }
 
                 adapted[offset] += mask;
-                offset += 320;
+                offset += SW;
             }
             break;
         case 2:
@@ -1067,7 +1067,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
                 adapted[offset] &= 0xC0u;
 
                 adapted[offset] += mask;
-                offset += 320;
+                offset += SW;
             }
             break;
         case 3:
@@ -1076,7 +1076,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
                 adapted[offset + 1] = 0x1E;
                 adapted[offset + 2] = 0x13;
                 adapted[offset + 3] = 0x0E;
-                offset += 320;
+                offset += SW;
             }
             break;
         default:
@@ -1142,7 +1142,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
             global_x += a;
             global_y += b;
 
-            index += 320 * tempB;
+            index += SW * tempB;
 
             adapted[index]     = 0x00;
             adapted[index + 1] = 0x3E;
@@ -1156,7 +1156,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
             global_x += a * 2;
             global_y += b * 2;
 
-            index += 320 * tempB;
+            index += SW * tempB;
 
             uint16_t color = adapted[index] << 2u;
 
@@ -1177,7 +1177,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
             global_x += a;
             global_y += b;
 
-            index += 320 * tempB;
+            index += SW * tempB;
 
             uint16_t color = adapted[index];
 
@@ -1198,7 +1198,7 @@ void stick(uint32_t xp, uint32_t yp, uint32_t xa, uint32_t ya) {
             global_x += a;
             global_y += b;
 
-            index += 320 * tempB;
+            index += SW * tempB;
 
             adapted[index]     = 0xCE;
             adapted[index + 1] = 0xD3;
@@ -2310,7 +2310,7 @@ void sky(uint16_t limits) {
                     ((xx * opt_pcosbeta) + (zz * opt_psinbeta)) * inv_rz);
 
                 index = rx + VIEW_X_CENTER;
-                if (index <= 10 || index >= 310) {
+                if (index <= 10 || index >= (uint32_t) SW - 10) {
                     continue;
                 }
 
@@ -2323,7 +2323,7 @@ void sky(uint16_t limits) {
                     continue;
                 }
 
-                index += (uint16_t)(320 * nety);
+                index += SW * nety;
 
                 if (ap_targetting != 1) {
                     uint8_t color = adapted[index];
@@ -2433,7 +2433,7 @@ void globe(uint16_t start, uint8_t *target, const uint8_t *tapestry,
     // 320 = Screen width, 100 = Max x/y pixels of the map,
     // 1.32 = Maximum magnification factor with points of 4 pixels.
 
-    if (rx < -292 || rx > 292) {
+    if (rx < -(SW / 2 + 132) || rx > SW / 2 + 132) {
         return; // 292 = (320 / 2) + (100 * 1.32)
     }
 
@@ -2451,16 +2451,16 @@ void globe(uint16_t start, uint8_t *target, const uint8_t *tapestry,
             int16_t offset = (int8_t) offsetsmap[j];
             temp           = offset;
             temp           = (int16_t) round(((int16_t) temp) * mag_factor);
-            uint16_t pos   = temp + center_y;
+            uint32_t pos   = (uint16_t) (temp + center_y);
 
             if (pos > 6 && pos < 191) {
                 offset = (int8_t) offsetsmap[j + 1];
-                pos    = 320 * pos;
+                pos    = SW * pos;
                 temp   = offset;
                 temp   = (int16_t) round(((int16_t) temp) * mag_factor);
                 offset = temp + center_x;
 
-                if (offset > 6 && offset < 311) {
+                if (offset > 6 && offset < SW - 9) {
                     pos += offset;
                     color = tapestry[curr];
                     if (color < globe_saturation) {
@@ -2474,40 +2474,40 @@ void globe(uint16_t start, uint8_t *target, const uint8_t *tapestry,
                         target[pos]     = color;
                         target[pos + 1] = color;
 
-                        target[pos + 320] = color;
-                        target[pos + 321] = color;
+                        target[pos + SW] = color;
+                        target[pos + SW + 1] = color;
                     } else if (gman == 3) {
                         target[pos]     = color;
                         target[pos + 1] = color;
                         target[pos + 2] = color;
 
-                        target[pos + 320] = color;
-                        target[pos + 321] = color;
-                        target[pos + 322] = color;
+                        target[pos + SW] = color;
+                        target[pos + SW + 1] = color;
+                        target[pos + SW + 2] = color;
 
-                        target[pos + 640] = color;
-                        target[pos + 641] = color;
-                        target[pos + 642] = color;
+                        target[pos + 2 * SW] = color;
+                        target[pos + 2 * SW + 1] = color;
+                        target[pos + 2 * SW + 2] = color;
                     } else if (gman == 4) {
                         target[pos]     = color;
                         target[pos + 1] = color;
                         target[pos + 2] = color;
                         target[pos + 3] = color;
 
-                        target[pos + 320] = color;
-                        target[pos + 321] = color;
-                        target[pos + 322] = color;
-                        target[pos + 323] = color;
+                        target[pos + SW] = color;
+                        target[pos + SW + 1] = color;
+                        target[pos + SW + 2] = color;
+                        target[pos + SW + 3] = color;
 
-                        target[pos + 640] = color;
-                        target[pos + 641] = color;
-                        target[pos + 642] = color;
-                        target[pos + 643] = color;
+                        target[pos + 2 * SW] = color;
+                        target[pos + 2 * SW + 1] = color;
+                        target[pos + 2 * SW + 2] = color;
+                        target[pos + 2 * SW + 3] = color;
 
-                        target[pos + 960] = color;
-                        target[pos + 961] = color;
-                        target[pos + 962] = color;
-                        target[pos + 963] = color;
+                        target[pos + 3 * SW] = color;
+                        target[pos + 3 * SW + 1] = color;
+                        target[pos + 3 * SW + 2] = color;
+                        target[pos + 3 * SW + 3] = color;
                     }
                 }
             }
@@ -2578,7 +2578,7 @@ void glowing_globe(int16_t start, uint8_t *target, const uint8_t *offsetsmap,
     /*  320 = Largh. schermo, 100 = max x/y pixels della mappa,
         0.66 = massimo fattore d'ingrandimento con punti di 4 pixels. */
 
-    if (rx < -226 || rx > 226) {
+    if (rx < -(SW / 2 + 66) || rx > SW / 2 + 66) {
         return; // 172 = (320 / 2) + (100 * 0.66)
     }
 
@@ -2602,15 +2602,15 @@ void glowing_globe(int16_t start, uint8_t *target, const uint8_t *offsetsmap,
                 int16_t offset = (int8_t) offsetsmap[j];
                 temp           = offset;
                 temp         = (uint16_t) x86_i32(round(((int16_t) temp) * mag_factor));
-                uint16_t pos = temp + center_y;
+                uint32_t pos = (uint16_t) (temp + center_y);
                 if (pos > 10 && pos < 190) { // Y bounds.
                     offset = (int8_t) offsetsmap[j + 1];
-                    pos    = 320 * pos;
+                    pos    = SW * pos;
                     temp   = offset;
                     temp   = (uint16_t) x86_i32(round(((int16_t) temp) * mag_factor));
                     offset = temp + center_x;
                     // X bounds. Don't ask why it's 6. It just works.
-                    if (offset > 6 && offset < 310) {
+                    if (offset > 6 && offset < SW - 10) {
                         pos += offset;
                         if (curr < terminator_arc) {
                             target[pos] = colorMask;
@@ -2642,7 +2642,7 @@ void white_globe(uint8_t *target, double x, double y, double z,
     double center_x, center_y, mag, fgm, shade_ext, ise;
     double xx, yy, zz, z2, rx, ry, rz, xa, ya, xb, yb;
     double magsq, fgmsq;
-    uint16_t pixptr;
+    uint32_t pixptr;
     int8_t pix;
 
     xx = x - dzat_x;
@@ -2674,7 +2674,7 @@ void white_globe(uint8_t *target, double x, double y, double z,
     /*  320 = Largh. schermo, 100 = max x/y pixels della mappa,
         3.00 = massimo fattore d'ingrandimento con dispersione. */
 
-    if (rx < -460 || rx > 460) {
+    if (rx < -(SW / 2 + 300) || rx > SW / 2 + 300) {
         return; // 460 = (320 / 2) + (100 * 3.00)
     }
 
@@ -2706,7 +2706,7 @@ void white_globe(uint8_t *target, double x, double y, double z,
         xx = center_x - mag;
 
         while (xx < xb) {
-            if (xx > 9 && xx < 313 && yy > 9 && yy < 190) {
+            if (xx > 9 && xx < SW - 7 && yy > 9 && yy < 190) {
                 zz = xa * xa + ya * ya;
 
                 if (zz < magsq) {
@@ -2716,19 +2716,19 @@ void white_globe(uint8_t *target, double x, double y, double z,
                         pix = 0x3F;
                     }
 
-                    pixptr = (uint16_t)(320 * ((int16_t) yy)) + (int16_t) xx;
+                    pixptr = SW * ((int16_t) yy) + (int16_t) xx;
                     pix += target[pixptr];
 
                     if (pix > 0x3F) {
                         target[pixptr]       = 0x3F;
                         target[pixptr + 1]   = 0x3F;
-                        target[pixptr + 320] = 0x3F;
-                        target[pixptr + 321] = 0x3F;
+                        target[pixptr + SW] = 0x3F;
+                        target[pixptr + SW + 1] = 0x3F;
                     } else {
                         target[pixptr]       = pix;
                         target[pixptr + 1]   = pix;
-                        target[pixptr + 320] = pix;
-                        target[pixptr + 321] = pix;
+                        target[pixptr + SW] = pix;
+                        target[pixptr + SW + 1] = pix;
                     }
                 }
             }
@@ -2755,7 +2755,7 @@ void white_sun(uint8_t *target, double x, double y, double z, float mag_factor,
     double center_x, center_y, mag, fgm, shade_ext, ise;
     double xx, yy, zz, z2, rx, ry, rz, xa, ya, xb, yb;
     double magsq, fgmsq;
-    uint16_t pixptr;
+    uint32_t pixptr;
     int8_t pix;
     xx = x - dzat_x;
     yy = y - dzat_y;
@@ -2786,7 +2786,7 @@ void white_sun(uint8_t *target, double x, double y, double z, float mag_factor,
     /*  320 = Largh. schermo, 100 = max x/y pixels della mappa,
         3.00 = massimo fattore d'ingrandimento con dispersione. */
 
-    if (rx < -460 || rx > 460) {
+    if (rx < -(SW / 2 + 300) || rx > SW / 2 + 300) {
         return; // 460 = (320 / 2) + (100 * 3.00)
     }
 
@@ -2817,7 +2817,7 @@ void white_sun(uint8_t *target, double x, double y, double z, float mag_factor,
         xx = center_x - mag;
 
         while (xx < xb) {
-            if (xx > 9 && xx < 313 && yy > 9 && yy < 190) {
+            if (xx > 9 && xx < SW - 7 && yy > 9 && yy < 190) {
                 zz = xa * xa + ya * ya;
 
                 if (zz < magsq) {
@@ -2827,7 +2827,7 @@ void white_sun(uint8_t *target, double x, double y, double z, float mag_factor,
                         pix = 0x3F;
                     }
 
-                    pixptr = ((int16_t) (((int16_t) 320) * ((int16_t) yy))) + (int16_t) xx;
+                    pixptr = SW * ((int16_t) yy) + (int16_t) xx;
                     pix += target[pixptr];
 
                     if (pix > 0x3F) {
@@ -2899,10 +2899,10 @@ void lens_flares_for(double cam_x, double cam_y, double cam_z, double xlight,
         xs = (int32_t)(rx / rz + xshift);
         ys = (int32_t)(ry / rz + yshift);
 
-        if (xs > -150 && ys > -90 && xs < 160 && ys < 90) {
+        if (xs > 10 - SW / 2 && ys > -90 && xs < SW / 2 && ys < 90) {
             switch (condition) {
             case 1:
-                temp = adapted[xs + VIEW_X_CENTER + 320 * (ys + VIEW_Y_CENTER)];
+                temp = adapted[xs + VIEW_X_CENTER + SW * (ys + VIEW_Y_CENTER)];
 
                 if (temp < 64) {
                     goto exit_local;
@@ -2911,7 +2911,7 @@ void lens_flares_for(double cam_x, double cam_y, double cam_z, double xlight,
                 break;
 
             case 2:
-                temp = adapted[xs + VIEW_X_CENTER + 320 * (ys + VIEW_Y_CENTER)];
+                temp = adapted[xs + VIEW_X_CENTER + SW * (ys + VIEW_Y_CENTER)];
 
                 if (temp < 64 || temp > 127) {
                     goto exit_local;
@@ -2975,7 +2975,7 @@ int8_t pixel_spreads     = 1;
 uint8_t multicolourmask  = 0xC0;
 
 // TODO; Might be offset from proper position. Verify against vanilla.
-void single_pixel_at_ptr(uint16_t offset, uint8_t pixel_color) {
+void single_pixel_at_ptr(uint32_t offset, uint8_t pixel_color) {
     // Add ptr shift to the offset.
     uint8_t *shifted = adapted + offset;
     uint8_t alow     = shifted[0];
@@ -3054,8 +3054,8 @@ int8_t far_pixel_at(double xlight, double ylight, double zlight, double radii,
         pyy /= rz;
         pyy += VIEW_Y_CENTER;
 
-        if (pxx > 10 && pyy > 10 && pxx < 310 && pyy < 190) {
-            vptr = (uint16_t)(320 * (int16_t) pyy + pxx);
+        if (pxx > 10 && pyy > 10 && pxx < SW - 10 && pyy < 190) {
+            vptr = SW * (int16_t) pyy + pxx;
 
             if (pixel_spreads) {
                 edge_color_1 = pixel_color >> 1u;
@@ -3064,35 +3064,35 @@ int8_t far_pixel_at(double xlight, double ylight, double zlight, double radii,
                 edge_color_4 = pixel_color >> 4u;
 
                 if (edge_color_1 > 7) {
-                    single_pixel_at_ptr(vptr - 320, edge_color_1);
-                    single_pixel_at_ptr(vptr + 320, edge_color_1);
+                    single_pixel_at_ptr(vptr - SW, edge_color_1);
+                    single_pixel_at_ptr(vptr + SW, edge_color_1);
                     single_pixel_at_ptr(vptr - 1, edge_color_1);
                     single_pixel_at_ptr(vptr + 1, edge_color_1);
                 }
 
                 if (edge_color_2 > 7) {
-                    single_pixel_at_ptr(vptr - 321, edge_color_2);
-                    single_pixel_at_ptr(vptr - 319, edge_color_2);
-                    single_pixel_at_ptr(vptr + 321, edge_color_2);
-                    single_pixel_at_ptr(vptr + 319, edge_color_2);
+                    single_pixel_at_ptr(vptr - (SW + 1), edge_color_2);
+                    single_pixel_at_ptr(vptr - (SW - 1), edge_color_2);
+                    single_pixel_at_ptr(vptr + SW + 1, edge_color_2);
+                    single_pixel_at_ptr(vptr + SW - 1, edge_color_2);
                 }
 
                 if (edge_color_3 > 7) {
-                    single_pixel_at_ptr(vptr - 640, edge_color_3);
-                    single_pixel_at_ptr(vptr + 640, edge_color_3);
+                    single_pixel_at_ptr(vptr - 2 * SW, edge_color_3);
+                    single_pixel_at_ptr(vptr + 2 * SW, edge_color_3);
                     single_pixel_at_ptr(vptr - 2, edge_color_3);
                     single_pixel_at_ptr(vptr + 2, edge_color_3);
                 }
 
                 if (edge_color_4 > 7) {
-                    single_pixel_at_ptr(vptr - 641, edge_color_4);
+                    single_pixel_at_ptr(vptr - (2 * SW + 1), edge_color_4);
                     single_pixel_at_ptr(vptr - 639, edge_color_4);
-                    single_pixel_at_ptr(vptr + 641, edge_color_4);
+                    single_pixel_at_ptr(vptr + 2 * SW + 1, edge_color_4);
                     single_pixel_at_ptr(vptr + 639, edge_color_4);
-                    single_pixel_at_ptr(vptr - 322, edge_color_4);
-                    single_pixel_at_ptr(vptr - 318, edge_color_4);
-                    single_pixel_at_ptr(vptr + 322, edge_color_4);
-                    single_pixel_at_ptr(vptr + 318, edge_color_4);
+                    single_pixel_at_ptr(vptr - (SW + 2), edge_color_4);
+                    single_pixel_at_ptr(vptr - (SW - 2), edge_color_4);
+                    single_pixel_at_ptr(vptr + SW + 2, edge_color_4);
+                    single_pixel_at_ptr(vptr + SW - 2, edge_color_4);
                 }
 
                 if (pixel_color > 7) {
@@ -5676,7 +5676,7 @@ static int8_t taking_snapshot = 0;
 
 void wrouthud(uint16_t x, uint16_t y, uint16_t l, const char *text) {
     int16_t j, i, n;
-    uint16_t spot;
+    uint32_t spot;
     n = 0;
 
     if (draw_hud == 0 && about == 0 && taking_snapshot == 0 && moviestat == 0 &&
@@ -5688,7 +5688,7 @@ void wrouthud(uint16_t x, uint16_t y, uint16_t l, const char *text) {
         l = 32767;
     }
 
-    spot = y * 320 + x;
+    spot = y * SW + x;
 
     while (text[n] && n < l) {
         j = (text[n] - 32) * 5;
@@ -5706,10 +5706,10 @@ void wrouthud(uint16_t x, uint16_t y, uint16_t l, const char *text) {
                 adapted[spot + 2] = 191 - adapted[spot + 2];
             }
 
-            spot += 320;
+            spot += SW;
         }
 
-        spot -= 320 * 5;
+        spot -= SW * 5;
         spot += 4;
         n++;
     }
