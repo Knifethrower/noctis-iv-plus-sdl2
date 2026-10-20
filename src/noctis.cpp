@@ -416,6 +416,8 @@ static int8_t moviepaused    = 0;
 
 /* Freezes the situation (when exiting the program or running a module). */
 
+int32_t last_autosave = 0;
+
 void freeze() {
     FILE *fh = fopen(situation_file, "wb");
 
@@ -5020,6 +5022,12 @@ resynctoplanet:
     // Plus: roof speed ('s') skips the frame wait on the roof.
     if (!ontheroof || !roofspeed) {
         sync_stop();
+    }
+
+    // Autosave every 30 s: PortMaster quits with SIGKILL.
+    if (bios_clock() - last_autosave > 546) {
+        last_autosave = bios_clock();
+        freeze();
     }
 
     /* Hook for managing the motion characteristics of planet surface features

@@ -31,6 +31,7 @@ extern int32_t movieexists;
 extern float moviefps;
 
 extern int8_t blinkhudlights;
+extern int32_t last_autosave;
 extern int8_t blinkhudlights_stay;
 
 char *formatTriad(double value);
@@ -39,3 +40,4 @@ void ShowMovieSetup(int32_t moviefsec, int8_t movieflashoff, int32_t moviedeck);
 void FitOutHudBuffer(int32_t min, int32_t max);
 void ShowAboutPage(int8_t surface);
 int32_t movie_deck_exists(int32_t deck);
+void freeze();

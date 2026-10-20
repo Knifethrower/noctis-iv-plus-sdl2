@@ -3971,6 +3971,29 @@ int8_t entryflag = 0; // flag: se settato all'ingresso di planetary_main,
 // significa che si sta recuperando la situazione
 // di superficie.
 
+// surface.bin: where to come back on the planet after a quit.
+static bool write_surface_file() {
+    FILE* sfh = fopen(surface_file, "wb+");
+
+    if (sfh == nullptr) {
+        return false;
+    }
+
+    fwrite(&landing_pt_lon, 2, 1, sfh);
+    fwrite(&landing_pt_lat, 2, 1, sfh);
+    fwrite(&atl_x, 4, 1, sfh);
+    fwrite(&atl_z, 4, 1, sfh);
+    fwrite(&atl_x2, 4, 1, sfh);
+    fwrite(&atl_z2, 4, 1, sfh);
+    fwrite(&pos_x, 4, 1, sfh);
+    fwrite(&pos_y, 4, 1, sfh);
+    fwrite(&pos_z, 4, 1, sfh);
+    fwrite(&user_alfa, 4, 1, sfh);
+    fwrite(&user_beta, 4, 1, sfh);
+    fclose(sfh);
+    return true;
+}
+
 // Plus: jump and jetpack state.
 int8_t jumping = 0;
 int8_t jetpack = 0;
@@ -5583,6 +5606,35 @@ void planetary_main() {
         // fine sincronizzazione fotogrammi.
         sync_stop ();
 
+        // Autosave every 30 s (PortMaster quits with SIGKILL): surface.bin as
+        // Esc writes it, current.bin with the ship values Esc would restore.
+        if (landed && bios_clock() - last_autosave > 546) {
+            last_autosave = bios_clock();
+            write_surface_file();
+            double sx = dzat_x, sy = dzat_y, sz = dzat_z;
+            float px = pos_x, py = pos_y, pz = pos_z, ua = user_alfa, ub = user_beta;
+            int8_t fa = field_amplificator;
+            dzat_x = backup_dzat_x;
+            dzat_y = backup_dzat_y;
+            dzat_z = backup_dzat_z;
+            field_amplificator = bfa;
+            pos_x = 0;
+            pos_y = 0;
+            pos_z = -3100;
+            user_alfa = 0;
+            user_beta = 0;
+            freeze();
+            dzat_x = sx;
+            dzat_y = sy;
+            dzat_z = sz;
+            field_amplificator = fa;
+            pos_x = px;
+            pos_y = py;
+            pos_z = pz;
+            user_alfa = ua;
+            user_beta = ub;
+        }
+
         // controllo funzione widesnapping.
         if (widesnapping) {
             if (widesnapping == 1) {
@@ -5933,25 +5985,9 @@ void planetary_main() {
                     gravity = gravity + 400;
                 }
 
-                if (w == 27 && landed) {
-                    FILE* sfh = fopen(surface_file, "wb+");
-
-                    if (sfh != nullptr) {
-                        fwrite(&landing_pt_lon, 2, 1, sfh);
-                        fwrite(&landing_pt_lat, 2, 1, sfh);
-                        fwrite(&atl_x, 4, 1, sfh);
-                        fwrite(&atl_z, 4, 1, sfh);
-                        fwrite(&atl_x2, 4, 1, sfh);
-                        fwrite(&atl_z2, 4, 1, sfh);
-                        fwrite(&pos_x, 4, 1, sfh);
-                        fwrite(&pos_y, 4, 1, sfh);
-                        fwrite(&pos_z, 4, 1, sfh);
-                        fwrite(&user_alfa, 4, 1, sfh);
-                        fwrite(&user_beta, 4, 1, sfh);
-                        fclose(sfh);
-                        exitflag = 1;
-                        goto nodissolve;
-                    }
+                if (w == 27 && landed && write_surface_file()) {
+                    exitflag = 1;
+                    goto nodissolve;
                 }
             }
         }
@@ -5969,6 +6005,10 @@ void planetary_main() {
     }
 
     nodissolve:
+    if (!exitflag) {
+        remove(surface_file);
+    }
+
     memset(adapted, 0, QUADWORDS * 4);
     dzat_x = backup_dzat_x;
     dzat_y = backup_dzat_y;
