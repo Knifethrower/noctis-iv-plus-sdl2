@@ -2784,7 +2784,35 @@ int main(int argc, char **argv) {
     freeze();
 }
 
-void swapBuffers() { plat_present(adapted, currpal); }
+// The on-screen keyboard (gamepad Select) in the HUD font, under the cabin
+// screens: drawn on a copy so the game's own frame stays as it is.
+static void draw_osk(int cursor) {
+    const int16_t x0 = 50, y0 = 136, cw = 22, ch = 8;
+    area_clear(adapted, x0 - 2, y0 - 2, 0, 0, OSK_COLS * cw + 3, OSK_ROWS * ch + 3, 64 + 8);
+
+    for (int i = 0; i < OSK_COLS * OSK_ROWS; i++) {
+        int16_t x = x0 + (i % OSK_COLS) * cw, y = y0 + (i / OSK_COLS) * ch;
+        area_clear(adapted, x, y, 0, 0, cw - 1, ch - 1, i == cursor ? 64 + 56 : 64 + 22);
+        wrouthud(x + 2, y + 1, 0, plat_osk_label(i));
+    }
+}
+
+void swapBuffers() {
+    int cursor = plat_osk_cursor();
+
+    if (cursor < 0) {
+        plat_present(adapted, currpal);
+        return;
+    }
+
+    static uint8_t frame[64000];
+    memcpy(frame, adapted, sizeof(frame));
+    uint8_t *game_frame = adapted;
+    adapted = frame;
+    draw_osk(cursor);
+    adapted = game_frame;
+    plat_present(frame, currpal);
+}
 
 // Plus moviemaker key actions (the Plus source repeats these in each handler).
 static void movie_deck_status() {
@@ -3041,6 +3069,18 @@ void loop() {
         }
 
         dlt_beta -= (float) mdltx / 3;
+    }
+
+    // Gamepad: left stick walks and strafes, right stick looks around
+    // (the mouse scales of the original, looking as with mouselook on).
+    plat_pad_context(PAD_SPACE, sys);
+    {
+        float lx, ly, rx, ry;
+        plat_pad_sticks(&lx, &ly, &rx, &ry);
+        step -= 30 * ly;
+        shift += 30 * lx;
+        dlt_beta -= 2 * rx;
+        dlt_alfa += 1.5f * ry;
     }
 
     // Mouse input for double left and right click.
@@ -5634,7 +5674,22 @@ void ShowAboutPage(int8_t surface) {
     area_clear(adapted, 11, 35, 310, 44, 0, 0, 72);
     area_clear(adapted, 11, 45, 310, 168, 0, 0, 112);
 
-    if (surface) {
+    if (plat_pad_used()) {
+        wrouthud(14, 37, 0, surface ? "GAMEPAD (ON THE SURFACE):" : "GAMEPAD (IN THE STARDRIFTER):");
+        wrouthud(14, 53, 0, "LEFT STICK - WALK                         RIGHT STICK - LOOK");
+        if (surface) {
+            wrouthud(14, 59, 0, "A - JUMP                                  B - RIGHT CLICK");
+            wrouthud(14, 71, 0, "L1 - LAND ON SURFACE                      R1 - JETPACK (HOLD)");
+        } else {
+            wrouthud(14, 59, 0, "A - USE (LEFT CLICK)                      B - RIGHT CLICK, TWICE: GO");
+            wrouthud(14, 71, 0, "L1/R1 - PREVIOUS/NEXT CONSOLE MENU        D-PAD - ARROW KEYS");
+        }
+        wrouthud(14, 65, 0, "X - SNAPSHOT                              Y - ENTER");
+        wrouthud(14, 77, 0, "L2/R2 - OPEN/CLOSE VISOR                  L3/R3 - VFX MENU/MOVIEMAKER");
+        wrouthud(14, 83, 0, "SELECT - KEYBOARD                         START - THIS PAGE");
+        wrouthud(14, 95, 0, "KEYBOARD: D-PAD MOVES, A TYPES, B DELETES, Y ENTER, X SPACE,");
+        wrouthud(14, 101, 0, "          SELECT CLOSES. IT HAS EVERY KEY OF THE KEYBOARD LIST.");
+    } else if (surface) {
         wrouthud(14, 37, 0, "SHORTCUT KEYS (WHEN ON THE SURFACE):");
         wrouthud(14, 53, 0, "0-9 - MOVEMENT SPEED                      LEFT CLICK - WALK FORWARD");
         wrouthud(14, 59, 0, "J - JUMP                                  L - LAND ON SURFACE");

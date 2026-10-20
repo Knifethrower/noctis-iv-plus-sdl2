@@ -4584,6 +4584,28 @@ void planetary_main() {
             }
         }
 
+        // Gamepad: left stick walks (at the running speed of the left mouse
+        // button on this ground) and strafes, right stick looks around.
+        plat_pad_context(PAD_SURFACE, 0);
+        {
+            float lx, ly, rx, ry;
+            plat_pad_sticks(&lx, &ly, &rx, &ry);
+            float run = 75;
+
+            if (pos_y == 0) {
+                if (nearstar_p_type[ip_targetted] == 3) {
+                    run = sctype == ICY ? 150 : sctype == PLAINS ? 75 : 50;
+                } else {
+                    run = 125;
+                }
+            }
+
+            step -= ly * run * landed;
+            shift += 20 * lx * landed;
+            dlt_beta -= 2 * rx;
+            dlt_alfa += 1.5f * ry;
+        }
+
         tiredness += fabs(step) * 0.000001;
 
         // causa una scivolata su pareti ripide discese rapidamente,

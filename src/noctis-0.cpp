@@ -5680,7 +5680,7 @@ void wrouthud(uint16_t x, uint16_t y, uint16_t l, const char *text) {
     n = 0;
 
     if (draw_hud == 0 && about == 0 && taking_snapshot == 0 && moviestat == 0 &&
-        graphics_menu_status == 0) {
+        graphics_menu_status == 0 && plat_osk_cursor() < 0) {
         return;
     }
 

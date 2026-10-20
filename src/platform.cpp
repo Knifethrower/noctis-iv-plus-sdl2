@@ -324,9 +324,13 @@ static void key_down(const SDL_KeyboardEvent &k) {
     }
 }
 
+static void pad_event(const SDL_Event &e);
+static void pad_poll();
+
 void plat_pump() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
+        pad_event(e);
         switch (e.type) {
         case SDL_QUIT: exit(0);
         case SDL_KEYDOWN: key_down(e.key); break;
@@ -350,6 +354,7 @@ void plat_pump() {
         default: break;
         }
     }
+    pad_poll();
 }
 
 bool plat_key_ready() {
@@ -394,3 +399,5 @@ void test_crc(const char *tag, const void *data, size_t len) {
     }
     fprintf(stderr, "crc %s %08x\n", tag, h);
 }
+
+#include "pad.inc"

@@ -35,3 +35,15 @@ void plat_mouse(int16_t *dx, int16_t *dy, uint16_t *buttons);
 
 // Test mode only: checksum of a buffer on stderr (x86 vs ARM checks).
 void test_crc(const char *tag, const void *data, size_t len);
+
+// Gamepad: the game loops say where the player is (and the console menu shown
+// in the ship), and read the sticks (-1..1, deadzone applied) every frame.
+enum { PAD_SPACE, PAD_SURFACE };
+void plat_pad_context(int ctx, int menu);
+void plat_pad_sticks(float *lx, float *ly, float *rx, float *ry);
+bool plat_pad_used();
+
+// On-screen keyboard (Select): cursor -1 when closed; the game draws it.
+enum { OSK_COLS = 10, OSK_ROWS = 6 };
+int plat_osk_cursor();
+const char *plat_osk_label(int i);
