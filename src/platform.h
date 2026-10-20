@@ -3,6 +3,7 @@
 // SDL2 platform layer: stands in for the VGA card, the BIOS keyboard buffer,
 // the INT 33h mouse driver and the 18.2 Hz BIOS timer of the DOS original.
 
+#include <cstddef>
 #include <cstdint>
 
 void plat_init();
@@ -16,6 +17,9 @@ void screen_flash(int16_t line_color);
 
 // BIOS timer ticks (18.2065 Hz), what clock() returned under Borland C++.
 int32_t bios_clock();
+// time() for the game's calendar (fixed in test mode).
+#include <ctime>
+time_t plat_time();
 // Sleeps until bios_clock() moves on.
 void wait_tick();
 
@@ -28,3 +32,6 @@ int16_t plat_get_key(); // blocks like getch()
 
 // Mouse motion since the last call (mickeys) and buttons (bit 0 left, bit 1 right).
 void plat_mouse(int16_t *dx, int16_t *dy, uint16_t *buttons);
+
+// Test mode only: checksum of a buffer on stderr (x86 vs ARM checks).
+void test_crc(const char *tag, const void *data, size_t len);

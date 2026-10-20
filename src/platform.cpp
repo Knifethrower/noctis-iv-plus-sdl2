@@ -4,7 +4,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
+#include <string>
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
@@ -17,6 +19,16 @@ static int mouse_dx, mouse_dy;
 static uint16_t mouse_buttons;
 static uint16_t mouse_pressed; // clicks shorter than a frame still count
 static float mouse_scale = 1.0f;
+
+// Test mode (PC checks, x86 vs ARM): NOCTIS_FAKETIME=<unix time> makes the
+// clock advance one BIOS tick per frame from that date; NOCTIS_DUMP=<dir> with
+// NOCTIS_DUMPFRAMES="<n> ..." writes those frames as PPM and quits after the last.
+static bool fake_clock;
+static int32_t fake_ticks;
+static time_t fake_base;
+static int32_t frames;
+static const char *dump_dir;
+static const char *dump_frames;
 
 void plat_init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -57,6 +69,13 @@ void plat_init() {
     frame_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                   SDL_TEXTUREACCESS_STREAMING, 320, 200);
 
+    if (const char *s = getenv("NOCTIS_FAKETIME")) {
+        fake_clock = true;
+        fake_base  = (time_t) atoll(s);
+    }
+    dump_dir    = getenv("NOCTIS_DUMP");
+    dump_frames = getenv("NOCTIS_DUMPFRAMES");
+
     if (const char *s = getenv("NOCTIS_MOUSE_SCALE")) {
         mouse_scale = (float) atof(s);
     }
@@ -90,6 +109,37 @@ static void draw_scaled(const SDL_Rect &dst) {
 }
 
 static uint8_t last_frame[64000], last_palette[768];
+
+static void dump_frame(const uint8_t *frame, const uint8_t *palette) {
+    char want[16];
+    snprintf(want, sizeof(want), " %d ", (int) frames);
+    std::string list = std::string(" ") + dump_frames + " ";
+    if (list.find(want) == std::string::npos) {
+        return;
+    }
+
+    test_crc("frame", frame, 64000);
+    test_crc("palette", palette, 768);
+
+    char name[512];
+    snprintf(name, sizeof(name), "%s/f%d.ppm", dump_dir, (int) frames);
+    if (FILE *f = fopen(name, "wb")) {
+        fprintf(f, "P6\n320 200\n255\n");
+        for (int i = 0; i < 64000; i++) {
+            const uint8_t *c = palette + frame[i] * 3;
+            uint8_t rgb[3] = {(uint8_t) ((c[0] & 63) << 2), (uint8_t) ((c[1] & 63) << 2),
+                              (uint8_t) ((c[2] & 63) << 2)};
+            fwrite(rgb, 1, 3, f);
+        }
+        fclose(f);
+    }
+
+    size_t last = list.find_last_not_of(' ');
+    size_t start = list.find_last_of(' ', last) + 1;
+    if (atoi(list.c_str() + start) == frames) {
+        exit(0);
+    }
+}
 
 void plat_present(const uint8_t *frame, const uint8_t *palette) {
     if (frame != last_frame) {
@@ -138,6 +188,17 @@ void plat_present(const uint8_t *frame, const uint8_t *palette) {
     draw_scaled(dst);
     SDL_RenderPresent(renderer);
 
+    frames++;
+    if (dump_dir && dump_frames) {
+        dump_frame(frame, palette);
+    }
+
+    if (fake_clock) {
+        fake_ticks++;
+        plat_pump();
+        return;
+    }
+
     // Loops that never wait for the timer (roof speed) get 4x the DOS rate at most.
     static Uint32 last;
     Uint32 now = SDL_GetTicks();
@@ -150,10 +211,24 @@ void plat_present(const uint8_t *frame, const uint8_t *palette) {
 }
 
 int32_t bios_clock() {
-    return (int32_t) (SDL_GetTicks64() * 1193182ull / 65536000ull);
+    if (fake_clock) {
+        return fake_ticks;
+    }
+    return (int32_t) ((uint64_t) SDL_GetTicks() * 1193182ull / 65536000ull);
+}
+
+time_t plat_time() {
+    if (fake_clock) {
+        return fake_base + (time_t) ((int64_t) fake_ticks * 65536 / 1193182);
+    }
+    return time(nullptr);
 }
 
 void wait_tick() {
+    if (fake_clock) {
+        fake_ticks++;
+        return;
+    }
     int32_t t = bios_clock();
     while (bios_clock() == t) {
         plat_pump();
@@ -307,4 +382,15 @@ void screen_flash(int16_t line_color) {
         memset(last_frame + 198 * 320 + 1, line_color, 318);
     }
     plat_present(last_frame, last_palette);
+}
+
+void test_crc(const char *tag, const void *data, size_t len) {
+    if (!dump_dir) {
+        return;
+    }
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < len; i++) {
+        h = (h ^ ((const uint8_t *) data)[i]) * 16777619u;
+    }
+    fprintf(stderr, "crc %s %08x\n", tag, h);
 }

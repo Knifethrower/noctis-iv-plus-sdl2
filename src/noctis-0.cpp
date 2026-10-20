@@ -3132,7 +3132,7 @@ void getsecs() {
     nepoch.tm_year   = 84;
 
     time_t rawtime;
-    time(&rawtime);
+    rawtime = plat_time();
     struct tm *timeinfo;
     timeinfo = localtime(&rawtime);
     // Have to extract info from timeinfo before doing difftime, or else

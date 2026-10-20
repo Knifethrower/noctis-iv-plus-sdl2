@@ -2589,7 +2589,7 @@ void unfreeze() {
         }
     }
 
-    pwr = (int16_t) dpwr;
+    pwr = (int16_t) x86_i32(dpwr);
 }
 
 /* Main program. */
@@ -2655,20 +2655,35 @@ int main(int argc, char **argv) {
         m200[ir] = ir * 200;
     }
 
-    n_offsets_map = (uint8_t *) malloc(om_bytes);
-    n_globes_map = (int8_t *) malloc((uint16_t) gl_bytes + (uint16_t) gl_brest);
-    s_background = (uint8_t *) malloc(st_bytes);
-    p_background = (uint8_t *) malloc(pl_bytes);
+    // The buffers sit back to back in one zeroed block, in the order of the
+    // original's far heap: the few reads past an end see the same neighbor on
+    // every platform instead of malloc's bookkeeping.
+    const size_t sizes[] = {om_bytes, (size_t) gl_bytes + gl_brest, st_bytes, pl_bytes,
+                            ps_bytes | 65536, oc_bytes, pv_bytes, sc_bytes};
+    size_t heap_size = 0;
+    for (size_t sz : sizes) {
+        heap_size += ((sz + 15) & ~(size_t) 15) + 16;
+    }
+    uint8_t *heap = (uint8_t *) calloc(1, heap_size);
+    uint8_t *bufs[8];
+    for (int i = 0; i < 8; i++) {
+        bufs[i] = heap;
+        heap += ((sizes[i] + 15) & ~(size_t) 15) + 16;
+    }
+    n_offsets_map = bufs[0];
+    n_globes_map  = (int8_t *) bufs[1];
+    s_background  = bufs[2];
+    p_background  = bufs[3];
     /* NOTE: This is set to at least 65k because polymap keeps running over the
      * end. It happens in the original source too, and somehow isn't a problem
      * there, but we can't have it running over into random memory. The bug is
      * present in the original source.
      */
-    p_surfacemap = (uint8_t *) malloc(ps_bytes | 65536);
-    objectschart = (quadrant *) malloc(oc_bytes);
+    p_surfacemap  = bufs[4];
+    objectschart  = (quadrant *) bufs[5];
     ruinschart   = (uint8_t *) objectschart; // oc alias
-    pvfile       = (uint8_t *) malloc(pv_bytes);
-    adapted      = (uint8_t *) malloc(sc_bytes);
+    pvfile       = bufs[6];
+    adapted      = bufs[7];
     txtr         = (uint8_t *) p_background;             // txtr alias
     digimap2     = (uint32_t *) &n_globes_map[gl_bytes]; // font alias
 
@@ -2950,8 +2965,12 @@ void loop() {
             mslocate(0, 0, 2);
             mswrite(0, "SESSION ID ");
             fast_srand(x86_i32(secs * 18));
-            sprintf(temp_distance_buffer, "%05lu%05lu", fast_random(0x7FFF),
-                    fast_random(0x7FFF));
+            {
+                // Borland evaluated arguments right to left.
+                uint32_t second = fast_random(0x7FFF);
+                uint32_t first  = fast_random(0x7FFF);
+                sprintf(temp_distance_buffer, "%05u%05u", first, second);
+            }
             mswrite(0, temp_distance_buffer);
             break;
 
