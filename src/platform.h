@@ -6,7 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 
-void plat_init();
+// --fullscreen: fill the display (handhelds); otherwise a window.
+void plat_init(int argc, char **argv);
 
 // Shows a 320x200 8-bit frame with a 6-bit VGA palette (768 bytes), at 4:3.
 void plat_present(const uint8_t *frame, const uint8_t *palette);

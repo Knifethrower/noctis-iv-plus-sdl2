@@ -2651,7 +2651,7 @@ static const char *planet_descriptions[] = {
 void loop();
 
 int main(int argc, char **argv) {
-    plat_init();
+    plat_init(argc, argv);
 
     for (ir = 0; ir < 200; ir++) {
         m200[ir] = ir * 200;

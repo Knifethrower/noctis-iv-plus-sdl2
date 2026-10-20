@@ -30,15 +30,17 @@ static int32_t frames;
 static const char *dump_dir;
 static const char *dump_frames;
 
-void plat_init() {
+void plat_init(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init: %s", SDL_GetError());
         exit(1);
     }
 
     Uint32 flags = SDL_WINDOW_RESIZABLE;
-    if (getenv("NOCTIS_FULLSCREEN")) {
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--fullscreen")) {
+            flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        }
     }
     // Largest 320x240 multiple that fits the desktop.
     int k = 3;

@@ -698,7 +698,7 @@ float fast_flandom() { return ((float) fast_random(32767) * 0.000030518); }
 
 // Loads virtual file handles from supports.nct
 FILE *sa_open(int32_t offset_of_virtual_file) {
-    FILE* fh = fopen("res/supports.nct", "rb");
+    FILE* fh = fopen("data/SUPPORTS.NCT", "rb");
 
     if (fh == nullptr) {
         return nullptr;
