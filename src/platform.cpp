@@ -29,6 +29,46 @@ static time_t fake_base;
 static int32_t frames;
 static const char *dump_dir;
 static const char *dump_frames;
+// NOCTIS_INPUT="<frame>:<event> ...": k<code> key (256 + scan code = extended),
+// m<dx>,<dy> mouse motion, b<mask> mouse buttons held from that frame on.
+static const char *test_input;
+
+static void push_ext(int16_t scan);
+
+static void test_input_for(int32_t frame) {
+    for (const char *p = test_input; p && *p;) {
+        char *end;
+        long f = strtol(p, &end, 10);
+        if (end == p || *end != ':') {
+            break;
+        }
+        p = end + 1;
+        char kind = *p++;
+        long a = strtol(p, &end, 10), b = 0;
+        p = end;
+        if (*p == ',') {
+            b = strtol(p + 1, &end, 10);
+            p = end;
+        }
+        if (f == frame) {
+            if (kind == 'k') {
+                if (a >= 256) {
+                    push_ext(a - 256);
+                } else {
+                    keybuf.push_back(a);
+                }
+            } else if (kind == 'm') {
+                mouse_dx += a;
+                mouse_dy += b;
+            } else if (kind == 'b') {
+                mouse_buttons = a;
+            }
+        }
+        while (*p == ' ') {
+            p++;
+        }
+    }
+}
 
 void plat_init(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -77,6 +117,7 @@ void plat_init(int argc, char **argv) {
     }
     dump_dir    = getenv("NOCTIS_DUMP");
     dump_frames = getenv("NOCTIS_DUMPFRAMES");
+    test_input  = getenv("NOCTIS_INPUT");
 
     if (const char *s = getenv("NOCTIS_MOUSE_SCALE")) {
         mouse_scale = (float) atof(s);
@@ -198,6 +239,7 @@ void plat_present(const uint8_t *frame, const uint8_t *palette) {
     if (fake_clock) {
         fake_ticks++;
         plat_pump();
+        test_input_for(frames);
         return;
     }
 
