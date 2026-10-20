@@ -1,6 +1,7 @@
 #include "noctis-d.h"
 
 extern uint32_t QUADWORDS;
+extern void update_view_bounds();
 extern uint8_t *adapted;
 extern int16_t get_key();
 extern bool is_key();
@@ -18,7 +19,7 @@ extern uint16_t mpul;
 extern void handle_input();
 extern void area_clear(uint8_t *dest, int16_t x, int16_t y, int16_t x2,
                       int16_t y2, int16_t l, int16_t h, uint8_t pattern);
-extern void psmooth_grays(uint8_t *target);
+extern void psmooth_grays(uint8_t *target, int32_t stride);
 extern void pfade(uint8_t *target, uint16_t segshift, uint8_t speed);
 extern void psmooth_64(uint8_t *target, uint16_t segshift);
 extern void smootharound_64(uint8_t *target, int32_t cx, int32_t cy, int32_t r,
@@ -292,7 +293,7 @@ extern void modpv(int16_t handle, int16_t polygon_id, int16_t vertex_id,
 extern char *alphavalue(double value);
 extern void background(uint16_t start, uint8_t *target, uint8_t *background,
                        uint8_t *offsetsmap, uint16_t total_map_bytes,
-                       uint16_t screenshift);
+                       int32_t screenshift);
 extern void sky(uint16_t limits);
 extern double laststar_x, laststar_y, laststar_z;
 extern int8_t isthere(double star_id);

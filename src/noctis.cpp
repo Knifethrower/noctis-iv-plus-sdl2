@@ -288,15 +288,15 @@ void pointer_cross_for(double xlight, double ylight, double zlight) {
         ry /= rz;
         ry += VIEW_Y_CENTER - 2;
 
-        if (rx > 10 && ry > 10 && rx < 310 && ry < 190) {
-            uint16_t offset = (320 * ((uint16_t) ry)) + ((uint16_t) rx);
+        if (rx > 10 && ry > 10 && rx < SW - 10 && ry < 190) {
+            uint32_t offset = (SW * ((uint16_t) ry)) + ((uint16_t) rx);
 
             for (int16_t i = 0; i < 4; i++) {
                 int16_t mod1 = (i == 1 || i == 3) ? 1 : -1;
                 int16_t mod2 = (i == 1 || i == 2) ? 1 : -1;
 
                 for (int16_t j = 7; j > 3; j--) {
-                    adapted[offset + mod1 * 320 * j + mod2 * j] = 126;
+                    adapted[offset + mod1 * SW * j + mod2 * j] = 126;
                 }
             }
         }
@@ -2632,7 +2632,7 @@ int16_t opencapdelta        = 0;
 int16_t holdtomiddle        = 0;
 int8_t leftturn, rightturn, arrowcolor, farstar = 0;
 char temp_distance_buffer[16];
-uint16_t pqw;
+uint32_t pqw;
 float hold_z;
 float tmp_float;
 int32_t p1, p2, p3, p4;
@@ -2652,6 +2652,8 @@ void loop();
 
 int main(int argc, char **argv) {
     plat_init(argc, argv);
+    SW = plat_screen_width();
+    update_view_bounds();
 
     for (ir = 0; ir < 200; ir++) {
         m200[ir] = ir * 200;
@@ -2712,8 +2714,9 @@ int main(int argc, char **argv) {
     }
 
     unfreeze();
+    QUADWORDS = SW * SH / 4;
     memset(adapted, 0, QUADWORDS * 4);
-    QUADWORDS -= 1440;
+    QUADWORDS -= SW * 18 / 4;
     pqw = QUADWORDS;
     handle_input();
     mpul = 0;
@@ -2765,7 +2768,7 @@ int main(int argc, char **argv) {
         opencapdelta = -2;
         holdtomiddle = 1;
         pp_gravity   = 1;
-        QUADWORDS    = 16000;
+        QUADWORDS    = SW * SH / 4;
         memset(adapted, 0, QUADWORDS * 4);
         QUADWORDS = pqw;
 
@@ -2789,7 +2792,7 @@ int main(int argc, char **argv) {
 // The on-screen keyboard (gamepad Select) in the HUD font, under the cabin
 // screens: drawn on a copy so the game's own frame stays as it is.
 static void draw_osk(int cursor) {
-    const int16_t x0 = 50, y0 = 136, cw = 22, ch = 8;
+    const int16_t x0 = (SW - 220) / 2, y0 = 136, cw = 22, ch = 8;
     area_clear(adapted, x0 - 2, y0 - 2, 0, 0, OSK_COLS * cw + 3, OSK_ROWS * ch + 3, 64 + 8);
 
     for (int i = 0; i < OSK_COLS * OSK_ROWS; i++) {
@@ -2807,8 +2810,8 @@ void swapBuffers() {
         return;
     }
 
-    static uint8_t frame[64000];
-    memcpy(frame, adapted, sizeof(frame));
+    static uint8_t frame[SW_MAX * SH];
+    memcpy(frame, adapted, SW * SH);
     uint8_t *game_frame = adapted;
     adapted = frame;
     draw_osk(cursor);
@@ -3251,7 +3254,7 @@ nop:
 
     // Black background, which will be made hazy.
     if (!stspeed) {
-        memset(adapted + 2880, 0, QUADWORDS * 4);
+        memset(adapted + 9 * SW, 0, QUADWORDS * 4);
     } else {
         pfade(adapted, 180, 8);
     }
@@ -3308,10 +3311,10 @@ nop:
             }
         }
 
-        psmooth_grays(adapted + 2880);
+        psmooth_grays(adapted + 9 * SW, SW);
     }
 
-    mask_pixels(adapted + 2880, 64);
+    mask_pixels(adapted + 9 * SW, 64);
 
     if (l_dsd < 8 * nearstar_ray) {
         if (farstar) {
@@ -3881,7 +3884,7 @@ ext_1: //
     // � poco risolutivo, sia fisicamente che cromaticamente.
     //
     pqw       = QUADWORDS;
-    QUADWORDS = 160 + openhudcount * 80;
+    QUADWORDS = (2 + openhudcount) * SW / 4;
     psmooth_64(adapted, 160);
     psmooth_64(adapted, 160);
     QUADWORDS = pqw;
@@ -4166,10 +4169,10 @@ ext_1: //
         planet_xyz(ip_targetted);
 
         if (far_pixel_at(plx, ply, plz, 0, 1)) {
-            uint16_t index = vptr - 640;
+            uint32_t index = vptr - 2 * SW;
 
             for (int16_t i = 0; i < 4; i++) {
-                int16_t voffset = (i > 1) ? 320 : 1;
+                int32_t voffset = (i > 1) ? SW : 1;
                 int16_t signmod = (i % 2 == 0) ? -1 : 1;
 
                 for (int16_t j = 4; j < 8; j++) {
@@ -4778,7 +4781,7 @@ resynctoplanet:
     }
 
     // Page swap.
-    QUADWORDS = 16000;
+    QUADWORDS = SW * SH / 4;
 
     if (_delay == 13) {
         _delay = 0;
@@ -5674,13 +5677,13 @@ resynctoplanet:
 
 // Plus: F1 help & about page.
 void ShowAboutPage(int8_t surface) {
-    area_clear(adapted, 5, 5, 315, 195, 0, 0, 0);
-    area_clear(adapted, 11, 10, 310, 32, 0, 0, 80);
+    area_clear(adapted, 5, 5, SW - 5, 195, 0, 0, 0);
+    area_clear(adapted, 11, 10, SW - 10, 32, 0, 0, 80);
     wrouthud(14, 12, 0, "                               NOCTIS IV PLUS");
     wrouthud(14, 19, 0, "                      BY MEGA, NEUZD, SL, AND OTHERS");
     wrouthud(14, 26, 0, "     MODIFIED VERSION OF NOCTIS - A PROGRAM MADE BY ALESSANDRO GHIGNOLA.");
-    area_clear(adapted, 11, 35, 310, 44, 0, 0, 72);
-    area_clear(adapted, 11, 45, 310, 168, 0, 0, 112);
+    area_clear(adapted, 11, 35, SW - 10, 44, 0, 0, 72);
+    area_clear(adapted, 11, 45, SW - 10, 168, 0, 0, 112);
 
     if (plat_pad_used()) {
         wrouthud(14, 37, 0, surface ? "GAMEPAD (ON THE SURFACE):" : "GAMEPAD (IN THE STARDRIFTER):");
@@ -5714,7 +5717,7 @@ void ShowAboutPage(int8_t surface) {
         wrouthud(14, 71, 0, "DOWN ARROW - TOGGLE MOUSELOOK             PLUS AND MINUS - HUD BRIGHTNESS");
     }
 
-    area_clear(adapted, 11, 178, 310, 188, 0, 0, 72);
+    area_clear(adapted, 11, 178, SW - 10, 188, 0, 0, 72);
 
     if (charge < 0) {
         wrouthud(14, 160, 0, "           THIS STARDRIFTER IS EQUIPPED WITH THE OMEGA DRIVE       ");

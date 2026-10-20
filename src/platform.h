@@ -9,7 +9,12 @@
 // --fullscreen: fill the display (handhelds); otherwise a window.
 void plat_init(int argc, char **argv);
 
-// Shows a 320x200 8-bit frame with a 6-bit VGA palette (768 bytes), at 4:3.
+// Frame width: 320 (4:3) up to PLAT_MAX_W for wider displays, chosen at start.
+#define PLAT_MAX_W 480
+int plat_screen_width();
+
+// Shows a (screen width)x200 8-bit frame with a 6-bit VGA palette (768 bytes);
+// DOS pixels are 5:6, so 320 is 4:3.
 void plat_present(const uint8_t *frame, const uint8_t *palette);
 
 // What the original drew straight to video memory when taking a snapshot:

@@ -132,14 +132,14 @@ void greenmush(float x, float y, float z, uint8_t mask_1, uint8_t mask_2,
             m2 = 1 + fast_random(mask_2);
 
             for (n2 = 0; n2 < m2; n2++) {
-                uint16_t tdi = 320 * (_y_ + fast_random(7)) + _x_ + fast_random(7);
+                uint32_t tdi = SW * (_y_ + fast_random(7)) + _x_ + fast_random(7);
                 uint8_t tcl        = colorgrade + fast_random(colormask);
                 adapted[tdi + 3]   = tcl;
                 adapted[tdi + 4]   = tcl;
                 adapted[tdi + 5]   = tcl;
-                adapted[tdi - 636] = tcl;
-                adapted[tdi - 316] = tcl;
-                adapted[tdi + 324] = tcl;
+                adapted[tdi - (2 * SW - 4)] = tcl;
+                adapted[tdi - (SW - 4)] = tcl;
+                adapted[tdi + SW + 4] = tcl;
             }
         }
     }
@@ -1897,7 +1897,7 @@ void asterism(uint8_t *map, int16_t x, int16_t y, int16_t base, int16_t variatio
 
 void nebular_sky() {
     // Cielo nebuloso, piuttosto alieno, con piccoli ammassi sparsi o striati.
-    uint16_t pqw  = QUADWORDS;
+    uint32_t pqw  = QUADWORDS;
     uint16_t seed = brtl_random(10000);
     QUADWORDS     = st_bytes / 4;
     // es: s_background[di]
@@ -1926,7 +1926,7 @@ rndpat:
     }
 
     if (brtl_random(3)) {
-        psmooth_grays(s_background);
+        psmooth_grays(s_background, 320);
     }
 
     QUADWORDS = pqw;
@@ -4002,7 +4002,7 @@ static int8_t movie_paused = 0;
 void planetary_main() {
     const int16_t widesnappingangle = 71;
     fcs_status_delay = 0; // Plus: no ghost UNLOCKING message
-    uint16_t pqw = QUADWORDS;
+    uint32_t pqw = QUADWORDS;
     int32_t     cpos;
     int8_t     bfa        = 0;
     int8_t     flash      = 1;
@@ -4804,12 +4804,12 @@ void planetary_main() {
         // tracciamento del cielo (che ovviamente ? lo sfondo).
         alfa = user_alfa;
         beta = user_beta;
-        ptr = ((int16_t)(5 * beta) % 5) - 320 * ((int16_t)(4 * (alfa + 180)) % 4) - 4;
-        ptr -= (int16_t)(beta / 72) * 320;
-        ptr -= 639;
+        int32_t sky_shift = ((int16_t)(5 * beta) % 5) - SW * ((int16_t)(4 * (alfa + 180)) % 4) - 4;
+        sky_shift -= (int16_t)(beta / 72) * SW;
+        sky_shift -= 2 * SW - 1;
         background (360 * (int16_t)(alfa + 51) - (int16_t)(beta) % 360,
                     adapted, s_background, n_offsets_map,
-                    om_bytes, ptr);
+                    om_bytes, sky_shift);
 
         // backup zone di cielo coperte dai fulmini.
         if (!flash) {
@@ -4872,7 +4872,7 @@ void planetary_main() {
         }
 
         // il cielo ha come colore di base 64.
-        mask_pixels (adapted + 2880, 64);
+        mask_pixels (adapted + 9 * SW, 64);
         // inizializzazione superficie dell'orizzonte.
         QUADWORDS = 256;
 
@@ -5410,8 +5410,8 @@ void planetary_main() {
         }
 
         if (nearstar_p_type[ip_targetted] == 2) {
-            mask_pixels (adapted + 2880, 0);
-            psmooth_grays (adapted + 2880);
+            mask_pixels (adapted + 9 * SW, 0);
+            psmooth_grays (adapted + 9 * SW, SW);
             goto ends;
         }
 
@@ -5490,7 +5490,7 @@ void planetary_main() {
         // Plus: status messages on the surface.
         if (fcs_status_delay > 0 && draw_hud == 1) {
             int16_t len = strlen(fcs_status_extended);
-            wrouthud(160 - 2 * len, 100, 0, fcs_status_extended);
+            wrouthud(SW / 2 - 2 * len, 100, 0, fcs_status_extended);
             fcs_status_delay--;
         }
 
@@ -5504,7 +5504,7 @@ void planetary_main() {
 
             waveblur--;
         } else {
-            QUADWORDS = 160 + openhudcount * 80;
+            QUADWORDS = (2 + openhudcount) * SW / 4;
             psmooth_64 (adapted, 160);
             psmooth_64 (adapted, 160);
             QUADWORDS = pqw;
@@ -5542,7 +5542,7 @@ void planetary_main() {
         // il fotogramma ? finito. ora lo visualizza.
         surrounding (draw_hud == 1 || graphics_menu_status == 1 || moviestat == 1 || about == 1,
                      openhudcount);
-        QUADWORDS = 16000;
+        QUADWORDS = SW * SH / 4;
 
         if (!widesnapping) {
             swapBuffers();
@@ -5664,8 +5664,13 @@ void planetary_main() {
                 }
 
                 fread(t, 1, 54, ih);
-                t[18] = 0x94;
+                t[18] = 0x94; // 916 pixels wide
                 t[19] = 0x03;
+                {
+                    int32_t image = 916 * 200, file = 1078 + image;
+                    memcpy(t + 2, &file, 4);
+                    memcpy(t + 34, &image, 4);
+                }
                 fclose (ih);
                 //
                 prog = lastSnapshot;
@@ -5716,27 +5721,27 @@ void planetary_main() {
                 fseek (i9997, 1078L, SEEK_SET);
 
                 for (line = 0; line < 200; line++) {
-                    fread(adapted, 1, 320, i9997);
+                    fread(adapted, 1, SW, i9997);
                     fseek (oh, line * 916L + 1078L + 309L, SEEK_SET);
-                    fwrite(adapted + 10, 1, 299, oh);
+                    fwrite(adapted + (SW - 320) / 2 + 10, 1, 299, oh);
                 }
 
                 //
                 fseek (i9998, 1078L, SEEK_SET);
 
                 for (line = 0; line < 200; line++) {
-                    fread(adapted, 1, 320, i9998);
+                    fread(adapted, 1, SW, i9998);
                     fseek (oh, line * 916L + 1078L, SEEK_SET);
-                    fwrite(adapted, 1, 309, oh);
+                    fwrite(adapted + (SW - 320) / 2, 1, 309, oh);
                 }
 
                 //
                 fseek (i9999, 1078L, SEEK_SET);
 
                 for (line = 0; line < 200; line++) {
-                    fread(adapted, 1, 320, i9999);
+                    fread(adapted, 1, SW, i9999);
                     fseek (oh, line * 916L + 1078L + 608L, SEEK_SET);
-                    fwrite(adapted + 10, 1, 308, oh);
+                    fwrite(adapted + (SW - 320) / 2 + 10, 1, 308, oh);
                 }
 
                 //

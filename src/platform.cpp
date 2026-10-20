@@ -10,8 +10,9 @@
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
-static SDL_Texture *frame_tex;  // 320x200, nearest
-static SDL_Texture *scaled_tex; // integer multiple of 320x200, linear to the screen
+static SDL_Texture *frame_tex;  // the game's frame, nearest
+static SDL_Texture *scaled_tex; // integer multiple of it, linear to the screen
+static int scr_w = 320, req_w;  // frame width (Hor+ on wide displays), --width
 static int scaled_k;
 
 static std::deque<int16_t> keybuf;
@@ -81,16 +82,20 @@ void plat_init(int argc, char **argv) {
         if (!strcmp(argv[i], "--fullscreen")) {
             flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         }
+        if (!strcmp(argv[i], "--width") && i + 1 < argc) {
+            req_w = atoi(argv[++i]);
+        }
     }
-    // Largest 320x240 multiple that fits the desktop.
-    int k = 3;
+    // Windowed: the picture's shape (4:3, or --width w : 240), largest multiple
+    // that fits the desktop.
+    int ww = req_w >= 320 ? req_w : 320, k = 3;
     SDL_DisplayMode dm;
     if (SDL_GetDesktopDisplayMode(0, &dm) == 0) {
-        k = SDL_min((dm.w - 64) / 320, (dm.h - 96) / 240);
+        k = SDL_min((dm.w - 64) / ww, (dm.h - 96) / 240);
         k = SDL_max(k, 1);
     }
     window = SDL_CreateWindow("Noctis IV Plus", SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED, 320 * k, 240 * k, flags);
+                              SDL_WINDOWPOS_CENTERED, ww * k, 240 * k, flags);
     if (!window) {
         SDL_Log("SDL_CreateWindow: %s", SDL_GetError());
         exit(1);
@@ -107,9 +112,21 @@ void plat_init(int argc, char **argv) {
         exit(1);
     }
 
+    // The frame's width: 320 for 4:3 as on DOS, wider for wider displays
+    // (DOS pixels are 5:6, so a w:h display shows 240 * w / h of them).
+    int w, h;
+    SDL_GetRendererOutputSize(renderer, &w, &h);
+    if (req_w) {
+        scr_w = req_w;
+    } else if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) {
+        scr_w = 240 * w / h;
+    }
+    scr_w = SDL_max(320, SDL_min(PLAT_MAX_W, scr_w)) & ~7;
+    printf("Display %dx%d, frame %dx200\n", w, h, scr_w);
+
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     frame_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-                                  SDL_TEXTUREACCESS_STREAMING, 320, 200);
+                                  SDL_TEXTUREACCESS_STREAMING, scr_w, 200);
 
     if (const char *s = getenv("NOCTIS_FAKETIME")) {
         fake_clock = true;
@@ -129,7 +146,7 @@ void plat_init(int argc, char **argv) {
 // Sharp scaling: nearest to the next integer multiple, then linear down to
 // the 4:3 picture, so uneven factors (2x2.4 on 640x480) don't band.
 static void draw_scaled(const SDL_Rect &dst) {
-    int k = (int) ceil(fmax(dst.w / 320.0, dst.h / 200.0));
+    int k = (int) ceil(fmax(dst.w / (double) scr_w, dst.h / 200.0));
     if (k < 1) {
         k = 1;
     }
@@ -139,7 +156,7 @@ static void draw_scaled(const SDL_Rect &dst) {
         }
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
         scaled_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-                                       SDL_TEXTUREACCESS_TARGET, 320 * k, 200 * k);
+                                       SDL_TEXTUREACCESS_TARGET, scr_w * k, 200 * k);
         scaled_k = k;
     }
     if (!scaled_tex || SDL_SetRenderTarget(renderer, scaled_tex) != 0) {
@@ -151,7 +168,7 @@ static void draw_scaled(const SDL_Rect &dst) {
     SDL_RenderCopy(renderer, scaled_tex, nullptr, &dst);
 }
 
-static uint8_t last_frame[64000], last_palette[768];
+static uint8_t last_frame[PLAT_MAX_W * 200], last_palette[768];
 
 static void dump_frame(const uint8_t *frame, const uint8_t *palette) {
     char want[16];
@@ -161,14 +178,14 @@ static void dump_frame(const uint8_t *frame, const uint8_t *palette) {
         return;
     }
 
-    test_crc("frame", frame, 64000);
+    test_crc("frame", frame, scr_w * 200);
     test_crc("palette", palette, 768);
 
     char name[512];
     snprintf(name, sizeof(name), "%s/f%d.ppm", dump_dir, (int) frames);
     if (FILE *f = fopen(name, "wb")) {
-        fprintf(f, "P6\n320 200\n255\n");
-        for (int i = 0; i < 64000; i++) {
+        fprintf(f, "P6\n%d 200\n255\n", scr_w);
+        for (int i = 0; i < scr_w * 200; i++) {
             const uint8_t *c = palette + frame[i] * 3;
             uint8_t rgb[3] = {(uint8_t) ((c[0] & 63) << 2), (uint8_t) ((c[1] & 63) << 2),
                               (uint8_t) ((c[2] & 63) << 2)};
@@ -186,7 +203,7 @@ static void dump_frame(const uint8_t *frame, const uint8_t *palette) {
 
 void plat_present(const uint8_t *frame, const uint8_t *palette) {
     if (frame != last_frame) {
-        memcpy(last_frame, frame, sizeof(last_frame));
+        memcpy(last_frame, frame, scr_w * 200);
     }
     memcpy(last_palette, palette, sizeof(last_palette));
 
@@ -205,8 +222,8 @@ void plat_present(const uint8_t *frame, const uint8_t *palette) {
     if (SDL_LockTexture(frame_tex, nullptr, &pixels, &pitch) == 0) {
         for (int y = 0; y < 200; y++) {
             uint32_t *row = (uint32_t *) ((uint8_t *) pixels + y * pitch);
-            const uint8_t *src = frame + y * 320;
-            for (int x = 0; x < 320; x++) {
+            const uint8_t *src = frame + y * scr_w;
+            for (int x = 0; x < scr_w; x++) {
                 row[x] = argb[src[x]];
             }
         }
@@ -216,12 +233,12 @@ void plat_present(const uint8_t *frame, const uint8_t *palette) {
     int w, h;
     SDL_GetRendererOutputSize(renderer, &w, &h);
     SDL_Rect dst;
-    if (w * 3 > h * 4) {
+    if (w * 240 > h * scr_w) {
         dst.h = h;
-        dst.w = h * 4 / 3;
+        dst.w = h * scr_w / 240;
     } else {
         dst.w = w;
-        dst.h = w * 3 / 4;
+        dst.h = w * 240 / scr_w;
     }
     dst.x = (w - dst.w) / 2;
     dst.y = (h - dst.h) / 2;
@@ -426,9 +443,9 @@ void plat_mouse(int16_t *dx, int16_t *dy, uint16_t *buttons) {
 
 void screen_flash(int16_t line_color) {
     if (line_color < 0) {
-        memset(last_frame, 0, sizeof(last_frame));
+        memset(last_frame, 0, scr_w * 200);
     } else {
-        memset(last_frame + 198 * 320 + 1, line_color, 318);
+        memset(last_frame + 198 * scr_w + 1, line_color, scr_w - 2);
     }
     plat_present(last_frame, last_palette);
 }
@@ -445,3 +462,5 @@ void test_crc(const char *tag, const void *data, size_t len) {
 }
 
 #include "pad.inc"
+
+int plat_screen_width() { return scr_w; }

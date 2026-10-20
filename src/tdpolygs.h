@@ -117,7 +117,7 @@ void segment(int32_t xp, int32_t yp, int32_t xa, int32_t ya) {
 
         while (pi < pf) {
             adapted[pi] = 255;
-            pi += 320;
+            pi += SW;
         }
 
         return;
@@ -254,6 +254,15 @@ float ubyf = (float) ((int32_t) uby);
 
 float x_centro_f = VIEW_X_CENTER;
 float y_centro_f = VIEW_Y_CENTER;
+
+// After SW changes: the view's limits and center.
+void update_view_bounds() {
+    lbxl       = lbx;
+    ubxl       = ubx;
+    lbxf       = (float) ((int32_t) lbx);
+    ubxf       = (float) ((int32_t) ubx);
+    x_centro_f = VIEW_X_CENTER;
+}
 
 // Call after changing the visual angle.
 // Update the following optimization variables, used by poly3d.
@@ -876,226 +885,98 @@ drawb:
     uint32_t lim_x = segmptr + max_x - min_x;
     uint16_t bytes = lim_x - segmptr + 2;
 
-    uint32_t loc0, loc1;
-    uint16_t tempBytes, tinkywinky, laalaa;
-    uint32_t tempfakedi;
-    uint8_t dipsy, po;
-
-    switch (flares) {
-    case 0:
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
-            tempBytes  = bytes;
-            tempfakedi = fakedi;
-
-            if (adapted[tempfakedi] != 255) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes == 0)
-                continue;
-            loc0 = tempfakedi;
-
-            while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                ;
-            loc1 = tempfakedi;
-
-            if (adapted[tempfakedi] != 255 && tempBytes > 0) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes > 0) {
-                while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                    ;
-
-                tempfakedi--;
-                tempfakedi = tempfakedi > (uint32_t) (SW * SH) ? (uint32_t) (SW * SH) : tempfakedi;
-                memset(&adapted[loc0], colore, tempfakedi - loc0);
-            } else {
-                loc1--;
-                memset(&adapted[loc0], colore, loc1 - loc0);
-            }
-        }
-        break;
-
-    case 1:
+    // Each row: the original's repne/repe scasb for the edge pixels (255) the
+    // segments drew. The count stops at zero and the flag keeps the last compare.
+    if (flares == 1) {
         colore &= 0x3Fu;
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
-            tempBytes  = bytes;
-            tempfakedi = fakedi;
+    }
 
-            if (adapted[tempfakedi] != 255) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes == 0)
-                continue;
-            loc0 = tempfakedi;
-
-            while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                ;
-            loc1 = tempfakedi;
-
-            if (adapted[tempfakedi] != 255 && tempBytes > 0) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes > 0) {
-                while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                    ;
-                tempfakedi--;
-
-                tinkywinky = tempfakedi - loc0;
-                tempfakedi = loc0;
-
-                for (; tinkywinky > 0; tempfakedi++, tinkywinky--) {
-                    dipsy = adapted[tempfakedi - 1];
-                    dipsy &= 0x3Fu;
-                    dipsy += colore;
-
-                    if (dipsy > 62)
-                        dipsy = 62;
-
-                    adapted[tempfakedi] = dipsy;
+    for (uint32_t row = segmptr; row <= lim_y; row += SW) {
+        uint32_t p = row;
+        uint16_t cx = bytes;
+        bool zf = false;
+        auto repne = [&]() {
+            while (cx) {
+                cx--;
+                zf = adapted[p++] == 255;
+                if (zf) {
+                    break;
                 }
+            }
+        };
+        auto repe = [&]() {
+            while (cx) {
+                cx--;
+                zf = adapted[p++] == 255;
+                if (!zf) {
+                    break;
+                }
+            }
+        };
+
+        repne();
+        if (zf) {
+            uint32_t si = p;
+            repe();
+            uint32_t bx = p;
+            repne();
+            // two edges: fill from the first to the second; one: up to its end
+            bool two = zf;
+            uint32_t from, count;
+            if (two) {
+                repe();
+                from  = si - 1;
+                count = (uint16_t) (p - 1 - from);
             } else {
-                loc1--;
+                from  = si - 1;
+                count = (uint16_t) (bx - 1 - from);
+            }
+            uint32_t di = from;
 
-                tinkywinky = loc1 - loc0;
-                tempfakedi = loc0;
-
-                dipsy = colore >> 1u;
-
-                for (; tinkywinky > 0; tempfakedi++, tinkywinky--) {
-                    po = adapted[tempfakedi - 1];
-                    po &= 0x3Fu;
-                    po += dipsy;
-
-                    if (po > 62)
-                        po = 62;
-
-                    adapted[tempfakedi] = po;
+            switch (flares) {
+            case 0:
+            case 4:
+                memset(&adapted[from], colore, count);
+                break;
+            case 1: {
+                uint8_t add = two ? colore : colore >> 1u;
+                for (; count; count--, di++) {
+                    uint8_t al = (adapted[di - 1] & 0x3Fu) + add;
+                    adapted[di] = al < 62 ? al : 62;
                 }
+                break;
             }
-        }
-        break;
-    case 2:
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
-            tempBytes  = bytes;
-            tempfakedi = fakedi;
-
-            if (adapted[tempfakedi] != 255) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes == 0)
-                continue;
-            loc0 = tempfakedi;
-
-            while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                ;
-            loc1 = tempfakedi;
-
-            if (adapted[tempfakedi] != 255 && tempBytes > 0) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes > 0) {
-                while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                    ;
-                tempfakedi--;
-
-                tinkywinky = tempfakedi - loc0;
-                tempfakedi = loc0;
-
-                for (; tinkywinky > 0; tempfakedi++, tinkywinky--) {
-                    tempfakedi = tempfakedi > (uint32_t) (SW * SH) ? (uint32_t) (SW * SH) : tempfakedi;
-                    if (adapted[tempfakedi] == 0xFF) {
-                        dipsy = adapted[tempfakedi - (SW + 1)];
-                        dipsy &= 0x3Fu;
-                        dipsy |= 0x40u;
-                        adapted[tempfakedi] = dipsy;
+            case 2:
+                for (; count; count--, di++) {
+                    if (two) {
+                        if (adapted[di] == 0xFF) {
+                            adapted[di] = (adapted[di - (SW + 1)] & 0x3Fu) | 0x40u;
+                        } else {
+                            uint16_t ax = ((adapted[di] & 0x3Fu) | 0x40u) + count;
+                            adapted[di] = ax < 128 ? ax : 127;
+                        }
                     } else {
-                        laalaa = adapted[tempfakedi];
-                        laalaa &= 0x3Fu;
-                        laalaa |= 0x40u;
-                        laalaa += tinkywinky;
-                        if (laalaa >= 128)
-                            laalaa = 127;
-                        adapted[tempfakedi] = laalaa;
+                        uint8_t ah = adapted[di - (SW + 1)];
+                        if (ah == 0xFF) {
+                            ah = adapted[di - (2 * SW + 2)];
+                        }
+                        adapted[di] = (ah & 0x3Fu) | 0x40u;
                     }
                 }
-            } else {
-                loc1--;
-                for (tempfakedi = loc0; tempfakedi < loc1; tempfakedi++) {
-                    dipsy = adapted[tempfakedi - (SW + 1)];
-                    if (dipsy == 0xFF) {
-                        dipsy = adapted[tempfakedi - (2 * SW + 2)];
-                    }
-
-                    dipsy &= 0x3Fu;
-                    dipsy |= 0x40u;
-                    adapted[tempfakedi] = dipsy;
-                }
+                break;
+            default:
+                return;
             }
         }
-        break;
-        // effetto flares = 3 spostato a "polymap"
-    case 4:
-        for (fakedi = segmptr; fakedi <= lim_y; fakedi += SW) {
-            tempBytes  = bytes;
-            tempfakedi = fakedi;
 
-            if (adapted[tempfakedi] != 255) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
+        if (flares == 4) {
+            // the color changes from row to row
+            uint8_t al = (colore & 0x3Fu) + ent;
+            if (al > 0x3F) {
+                al = (ent & 0x80u) ? 0 : 0x3F;
             }
-
-            if (tempBytes == 0)
-                continue;
-            loc0 = tempfakedi;
-
-            while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                ;
-            loc1 = tempfakedi;
-
-            if (adapted[tempfakedi] != 255 && tempBytes > 0) {
-                while (--tempBytes > 0 && adapted[++tempfakedi] != 255)
-                    ;
-            }
-
-            if (tempBytes > 0) {
-                while (tempBytes-- > 0 && adapted[tempfakedi++] == 255)
-                    ;
-
-                tempfakedi--;
-                memset(&adapted[loc0], colore, tempfakedi - loc0);
-            } else {
-                loc1--;
-                memset(&adapted[loc0], colore, loc1 - loc0);
-            }
-
-            dipsy = (colore & 0x3Fu) + ent;
-            po    = colore & 0xC0u;
-
-            if (dipsy > 0x3F) {
-                dipsy = 0x3F;
-                if (ent & 0x80u) {
-                    dipsy = 0;
-                }
-            }
-
-            dipsy |= po;
-            colore = dipsy;
+            colore = al | (colore & 0xC0u);
         }
-        break;
-    default:
-        return;
     }
 }
 
@@ -1900,7 +1781,7 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
             return;
         tdx    = ipart[i - 2];
         tax    = fpart[i - 2];
-        fakedi = 320 * i;
+        fakedi = SW * i;
         if (tax <= tdx) {
             goto do_singlescan;
         }
@@ -1908,9 +1789,9 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         fakedi += tdx;
 
     duplicate:
-        tdl                   = adapted[fakedi - 316];
+        tdl                   = adapted[fakedi - (SW - 4)];
         adapted[fakedi + 4]   = tdl;
-        adapted[fakedi + 324] = tdl;
+        adapted[fakedi + SW + 4] = tdl;
         fakedi++;
         tax--;
         if (tax != 0)

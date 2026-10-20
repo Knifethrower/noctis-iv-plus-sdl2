@@ -169,37 +169,23 @@ void area_clear(uint8_t *dest, int16_t x, int16_t y, int16_t x2, int16_t y2,
     Note: This procedure can be repeated to obtain greater attenuation.
 */
 
-void psmooth_grays(uint8_t *target) {
-    uint16_t count = (QUADWORDS << 2u) - (320u << 2u);
-    int index      = 0;
-    for (uint16_t i = 0; i < count; i++, index++) {
-        uint8_t smoothed;
-        uint32_t temp;
+void psmooth_grays(uint8_t *target, int32_t stride) {
+    // As the original: four rows added as 32-bit words (carries between the
+    // byte lanes included), masked, the four lanes added and divided, in place.
+    // stride: SW on the screen, 320 on textures.
+    uint32_t count = (QUADWORDS << 2u) - (stride << 2u);
+    uint8_t *di    = target + stride;
 
-        temp = (target[index + 3] << 24u) + (target[index + 2] << 16u) +
-               (target[index + 1] << 8u) + target[index];
-
-        temp += (target[index + 323] << 24u) + (target[index + 322] << 16u) +
-                (target[index + 321] << 8u) + target[index + 320];
-
-        temp += (target[index + 643] << 24u) + (target[index + 642] << 16u) +
-                (target[index + 641] << 8u) + target[index + 641];
-
-        temp += (target[index + 963] << 24u) + (target[index + 962] << 16u) +
-                (target[index + 961] << 8u) + target[index + 960];
-
-        temp &= 0xFCFCFCFC;
-        temp >>= 2u;
-
-        smoothed = temp & 0xFFu;
-        smoothed += temp & 0xFF00u;
-
-        temp >>= 16u;
-
-        smoothed += temp & 0xFFu;
-        smoothed += temp & 0xFF00u;
-        smoothed >>= 2u;
-        target[320] = smoothed;
+    for (uint32_t i = 0; i < count; i++, di++) {
+        uint32_t a, b, c, d;
+        memcpy(&a, di - stride, 4);
+        memcpy(&b, di, 4);
+        memcpy(&c, di + stride, 4);
+        memcpy(&d, di + 2 * stride, 4);
+        uint32_t edx = ((a + b + c + d) & 0xFCFCFCFCu) >> 2;
+        uint8_t al   = (uint8_t) edx + (uint8_t) (edx >> 8) + (uint8_t) (edx >> 16) +
+                     (uint8_t) (edx >> 24);
+        *di = al >> 2;
     }
 }
 
@@ -2142,10 +2128,80 @@ char *formatTriad(double value) {
 }
 
 // Draws the background, with the map offsets.map.
+// Wide screens: offsets.map covers the 320-pixel view. The side strips get
+// more blocks, placed by a cubic fitted to the map (tools-src/offsets_coeffs.py):
+// u, v = texel column and row from the middle of the view.
+struct BgBlock {
+    int16_t x, y;    // 320-screen coordinates (x beyond 0..319 at the sides)
+    uint16_t texel;  // offset from the start texel
+};
+static BgBlock bg_extra[4096];
+static int32_t bg_extras = -1;
+
+static void build_bg_extra(const uint8_t *offsetsmap, uint16_t total_map_bytes) {
+    static const double cx[10] = {155.680738, -0.000249287209, 0.000328411053, -1.14649281e-07,
+                                  3.84334686, 0.000324646086, -0.000325276278, -0.00030803583,
+                                  -3.66527823e-08, 9.71157067e-05};
+    static const double cy[10] = {97.5894533, 3.83876162, -0.000149519222, 8.83241078e-05,
+                                  0.000360397319, -0.000609160343, 1.72812697e-07, -0.000155308718,
+                                  0.000309141659, -1.24631021e-07};
+    int16_t umin[64], umax[64];
+    for (int i = 0; i < 64; i++) {
+        umin[i] = 999;
+        umax[i] = -999;
+    }
+    uint16_t tex = 0;
+    for (uint16_t i = 0; i < total_map_bytes / 2; i++) {
+        uint16_t word = offsetsmap[2 * i] | (offsetsmap[2 * i + 1] << 8);
+        if (word >= 64000) {
+            tex += word - 64000;
+            continue;
+        }
+        int16_t u = tex % 360 - 284, row = tex / 360;
+        if (row < 64) {
+            umin[row] = u < umin[row] ? u : umin[row];
+            umax[row] = u > umax[row] ? u : umax[row];
+        }
+        tex++;
+    }
+
+    int16_t side = (SW - 320) / 2;
+    bg_extras = 0;
+    for (int16_t row = 0; row < 64; row++) {
+        if (umin[row] > umax[row]) {
+            continue;
+        }
+        for (int16_t dir = -1; dir <= 1; dir += 2) {
+            for (int16_t u = dir < 0 ? umin[row] - 1 : umax[row] + 1; u > -284 && u < 75; u += dir) {
+                double v = row - 25, t[10], px = 0, py = 0;
+                int k = 0;
+                for (int i = 0; i < 4; i++) {
+                    for (int j = 0; j < 4 - i; j++) {
+                        t[k++] = pow(u, i) * pow(v, j);
+                    }
+                }
+                for (k = 0; k < 10; k++) {
+                    px += cx[k] * t[k];
+                    py += cy[k] * t[k];
+                }
+                int16_t x = (int16_t) lrint(px), y = (int16_t) lrint(py);
+                if (x < -side || x > 315 + side) {
+                    break;
+                }
+                if (y < 7 || y > 192 || bg_extras == 4096) {
+                    continue;
+                }
+                bg_extra[bg_extras++] = {x, y, (uint16_t) (row * 360 + u + 284)};
+            }
+        }
+    }
+}
+
 void background(uint16_t start, uint8_t *target, uint8_t *background,
                 uint8_t *offsetsmap, uint16_t total_map_bytes,
-                uint16_t screenshift) {
+                int32_t screenshift) {
     uint16_t tex_loc = start /*+ 4*/;
+    int32_t side = (SW - 320) / 2;
 
     for (uint16_t i = (total_map_bytes / 2), si = 0; i > 0; i--, si += 2) {
         uint16_t word = ((uint16_t)(((uint16_t) offsetsmap[si + 1]) << 8u)) |
@@ -2158,19 +2214,30 @@ void background(uint16_t start, uint8_t *target, uint8_t *background,
 
             tex_loc += offset;
         } else {
-            uint16_t screen_loc =
-                ((uint16_t)(((uint16_t) offsetsmap[si + 1]) << 8u)) |
-                ((uint16_t) offsetsmap[si]);
-            screen_loc += screenshift;
+            uint32_t screen_loc = scr_ofs(word / 320 * SW + word % 320 + side + screenshift);
             uint8_t color = background[tex_loc];
 
-            memset(&target[screen_loc], color, 5);
-            memset(&target[screen_loc + 320], color, 5);
-            memset(&target[screen_loc + 640], color, 5);
-            memset(&target[screen_loc + 960], color, 5);
-            memset(&target[screen_loc + 1280], color, 5);
+            for (int32_t r = 0; r < 5; r++) {
+                memset(&target[screen_loc + r * SW], color, 5);
+            }
 
             tex_loc += 1;
+        }
+    }
+
+    if (SW == 320) {
+        return;
+    }
+    if (bg_extras < 0) {
+        build_bg_extra(offsetsmap, total_map_bytes);
+    }
+    for (int32_t i = 0; i < bg_extras; i++) {
+        const BgBlock &b = bg_extra[i];
+        uint32_t screen_loc = scr_ofs(b.y * SW + b.x + side + screenshift);
+        uint8_t color = background[(uint16_t) (start + b.texel)];
+
+        for (int32_t r = 0; r < 5; r++) {
+            memset(&target[screen_loc + r * SW], color, 5);
         }
     }
 }
@@ -3086,9 +3153,9 @@ int8_t far_pixel_at(double xlight, double ylight, double zlight, double radii,
 
                 if (edge_color_4 > 7) {
                     single_pixel_at_ptr(vptr - (2 * SW + 1), edge_color_4);
-                    single_pixel_at_ptr(vptr - 639, edge_color_4);
+                    single_pixel_at_ptr(vptr - (2 * SW - 1), edge_color_4);
                     single_pixel_at_ptr(vptr + 2 * SW + 1, edge_color_4);
-                    single_pixel_at_ptr(vptr + 639, edge_color_4);
+                    single_pixel_at_ptr(vptr + 2 * SW - 1, edge_color_4);
                     single_pixel_at_ptr(vptr - (SW + 2), edge_color_4);
                     single_pixel_at_ptr(vptr - (SW - 2), edge_color_4);
                     single_pixel_at_ptr(vptr + SW + 2, edge_color_4);
@@ -4573,7 +4640,7 @@ void surface(int16_t logical_id, int16_t type, double seedval,
     // Specific final touches to the surface for Venusian planets.
     if (type == 2) {
         if (!brtl_random(3)) {
-            psmooth_grays(p_background);
+            psmooth_grays(p_background, 320);
             knot1 = 1;
         }
     }
@@ -5728,17 +5795,17 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
 
     if (draw_hud == 1) {
         for (lptr = 0; lptr < 04; lptr++) {
-            area_clear(adapted, 10, openhudcount + 9 - lptr, 0, 0, 300, 1,
+            area_clear(adapted, 10, openhudcount + 9 - lptr, 0, 0, SW - 20, 1,
                        54 + surlight + 3 * lptr);
         }
     }
 
     for (lptr = 0; lptr < 10; lptr++) {
-        area_clear(adapted, 0, 9 - lptr, 0, 0, 320, 1, 64 + surlight - lptr);
+        area_clear(adapted, 0, 9 - lptr, 0, 0, SW, 1, 64 + surlight - lptr);
     }
 
     for (lptr = 0; lptr < 10; lptr++) {
-        area_clear(adapted, 0, 190 + lptr, 0, 0, 320, 1, 64 + surlight - lptr);
+        area_clear(adapted, 0, 190 + lptr, 0, 0, SW, 1, 64 + surlight - lptr);
     }
 
     if (seamless_border == 1) {
@@ -5748,7 +5815,7 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
         }
 
         for (lptr = 0; lptr < 10; lptr++) {
-            area_clear(adapted, 310 + lptr, 10 - (lptr + 1), 0, 0, 1,
+            area_clear(adapted, SW - 10 + lptr, 10 - (lptr + 1), 0, 0, 1,
                        180 + 20 - ((9 - lptr) * 2), 64 + surlight - lptr);
         }
     } else {
@@ -5757,7 +5824,7 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
         }
 
         for (lptr = 0; lptr < 10; lptr++) {
-            area_clear(adapted, 310 + lptr, 10, 0, 0, 1, 180,
+            area_clear(adapted, SW - 10 + lptr, 10, 0, 0, 1, 180,
                        64 + surlight - lptr);
         }
     }
@@ -5789,21 +5856,21 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
         if (big) {
             area_clear(adapted, 9, 9, 0, 0, 5, 5, lptr);
             smootharound_64(adapted, 9, 9, 5, 1);
-            area_clear(adapted, 307, 9, 0, 0, 5, 5, lptr);
-            smootharound_64(adapted, 308, 9, 5, 1);
+            area_clear(adapted, SW - 13, 9, 0, 0, 5, 5, lptr);
+            smootharound_64(adapted, SW - 12, 9, 5, 1);
             area_clear(adapted, 9, 187, 0, 0, 5, 5, lptr);
             smootharound_64(adapted, 9, 188, 5, 1);
-            area_clear(adapted, 307, 187, 0, 0, 5, 5, lptr);
-            smootharound_64(adapted, 308, 188, 5, 1);
+            area_clear(adapted, SW - 13, 187, 0, 0, 5, 5, lptr);
+            smootharound_64(adapted, SW - 12, 188, 5, 1);
         } else {
             area_clear(adapted, 9, 9, 0, 0, 4, 4, lptr);
             smootharound_64(adapted, 9, 9, 5, 1);
-            area_clear(adapted, 308, 9, 0, 0, 4, 4, lptr);
-            smootharound_64(adapted, 308, 9, 5, 1);
+            area_clear(adapted, SW - 12, 9, 0, 0, 4, 4, lptr);
+            smootharound_64(adapted, SW - 12, 9, 5, 1);
             area_clear(adapted, 9, 188, 0, 0, 4, 4, lptr);
             smootharound_64(adapted, 9, 188, 5, 1);
-            area_clear(adapted, 308, 188, 0, 0, 4, 4, lptr);
-            smootharound_64(adapted, 308, 188, 5, 1);
+            area_clear(adapted, SW - 12, 188, 0, 0, 4, 4, lptr);
+            smootharound_64(adapted, SW - 12, 188, 5, 1);
         }
     }
 
@@ -5836,8 +5903,8 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
         strcat((char *) outhudbuffer, ".");
         strcat((char *) outhudbuffer,
                alphavalue((((int32_t)(pos_z)) >> 14u) - 100));
-        area_clear(adapted, 254, 1, 0, 0, 5, 7, 64 + 0);
-        area_clear(adapted, 256, 8, 0, 0, 1, 1, 64 + 63);
+        area_clear(adapted, SW - 66, 1, 0, 0, 5, 7, 64 + 0);
+        area_clear(adapted, SW - 64, 8, 0, 0, 1, 1, 64 + 63);
         ccom = 360 - user_beta;
 
         if (ccom > 359) {
@@ -5846,7 +5913,7 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
 
         cpos = (int16_t)(ccom / 9);
         crem = (int16_t)(ccom * 0.44444);
-        wrouthud(200 - (crem % 4), 2, 28, (char *) (compass + cpos));
+        wrouthud(SW - 120 - (crem % 4), 2, 28, (char *) (compass + cpos));
     } else {
         if (!ontheroof) {
             strcat((char *) outhudbuffer, " & ");
@@ -6015,7 +6082,7 @@ void snapshot(int16_t forcenumber, int8_t showdata) {
     }
 
     if (showdata) {
-        area_clear(adapted, 2, 191, 0, 0, 316, 7, 64 + 63);
+        area_clear(adapted, 2, 191, 0, 0, SW - 4, 7, 64 + 63);
 
         parsis_x = round(dzat_x);
         parsis_y = round(dzat_y);
@@ -6062,6 +6129,11 @@ void snapshot(int16_t forcenumber, int8_t showdata) {
 
     if (ih != nullptr) {
         a = 0;
+        // The stored header is for 320 x 200: width and sizes follow the screen.
+        int32_t w = SW, image = SW * SH, file = 1078 + image;
+        memcpy(t + 2, &file, 4);
+        memcpy(t + 18, &w, 4);
+        memcpy(t + 34, &image, 4);
         fwrite(t, 1, 54, ih);
 
         for (c = 0; c < 768; c += 3) {
@@ -6074,8 +6146,8 @@ void snapshot(int16_t forcenumber, int8_t showdata) {
             fwrite(&a, 1, 1, ih);
         }
 
-        for (ptr = 63680; ptr < 64000; ptr -= 320) {
-            fwrite(adapted + ptr, 1, 320, ih);
+        for (int32_t row = SH - 1; row >= 0; row--) {
+            fwrite(adapted + row * SW, 1, SW, ih);
         }
 
         fclose(ih);

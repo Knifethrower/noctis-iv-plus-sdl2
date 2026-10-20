@@ -22,7 +22,7 @@
 
 // The screen: 320 x 200 as on DOS. SW grows up to SW_MAX to fill wider
 // displays (Hor+: more of the view at the sides, the same height).
-#define SW_MAX 480
+#define SW_MAX PLAT_MAX_W
 #define SH 200
 extern int32_t SW;
 
@@ -66,7 +66,7 @@ static inline uint32_t scr_ofs(int32_t i) {
 //           screen update buffer.
 #define oc_bytes 40000 //   objectschart    map objects on the surface;
 //           atmospheric overlay.
-#define sc_bytes (SW_MAX * SH + 64) //   adapted         the hidden video page?�
+#define sc_bytes (SW_MAX * SH + 4096) //   adapted         the hidden video page?�
 //          2 bytes (support for polymap)
 //           would give 64002. But I extended
 //          it to 64Kb + 4 bytes to avoid it
