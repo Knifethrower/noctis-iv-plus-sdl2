@@ -34,7 +34,6 @@
 */
 
 #include <iostream>
-#include <stack>
 
 #include "brtl.h"
 #include "noctis-d.h"
@@ -52,19 +51,10 @@ uint8_t currpal[768];
 int8_t return_palette[768];
 int8_t surface_palette[768];
 
-static std::stack<int16_t> keys;
-
-// Wait for a key?
-int16_t get_key() {
-    if (keys.empty())
-        return 0;
-    int16_t top = keys.top();
-    keys.pop();
-    return top;
-}
+int16_t get_key() { return plat_get_key(); }
 
 // Return 1 if there is a key press to be processed.
-bool is_key() { return !keys.empty(); }
+bool is_key() { return plat_key_ready(); }
 
 uint8_t range8088[64 * 3] = {
     0,  0,  0,  1,  1,  1,  2,  2,  2,  3,  3,  3,  4,  4,  4,  5,  5,  5,
@@ -142,164 +132,8 @@ uint16_t mpul = 0;
 // Holds directions of WASD movement
 struct wasdmov key_move_dir;
 
-// Handle SDL events..
-void handle_input() {
-    static bool ldown = false;
-    static bool rdown = false;
-
-    mdltx = 0;
-    mdlty = 0;
-    mpul  = 0;
-
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
-            /* WASD player/camera movement. */
-            switch (event.key.keysym.scancode) {
-            case SDL_SCANCODE_W:
-                key_move_dir.forward = (event.type == SDL_KEYDOWN);
-                break;
-            case SDL_SCANCODE_A:
-                key_move_dir.left = (event.type == SDL_KEYDOWN);
-                break;
-            case SDL_SCANCODE_S:
-                key_move_dir.backward = (event.type == SDL_KEYDOWN);
-                break;
-            case SDL_SCANCODE_D:
-                key_move_dir.right = (event.type == SDL_KEYDOWN);
-                break;
-            default:
-                break;
-            }
-        }
-
-        if (event.type == SDL_QUIT) {
-            exit(0);
-        } else if (event.type == SDL_MOUSEMOTION) {
-            mdltx = event.motion.xrel;
-            mdlty = event.motion.yrel;
-
-            // printf("mdltX: %hd; mdltY: %hd\n", mdltx, mdlty);
-
-            mouse_x += mdltx;
-            mouse_y += mdlty;
-
-            // printf("mX: %hu; mY %hu\n", mx, my);
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            if (event.button.button == SDL_BUTTON_LEFT)
-                ldown = true;
-            if (event.button.button == SDL_BUTTON_RIGHT)
-                rdown = true;
-        } else if (event.type == SDL_MOUSEBUTTONUP) {
-            if (event.button.button == SDL_BUTTON_LEFT)
-                ldown = false;
-            if (event.button.button == SDL_BUTTON_RIGHT)
-                rdown = false;
-        } else if (event.type == SDL_KEYUP) {
-            switch (event.key.keysym.scancode) {
-            case SDL_SCANCODE_1:
-            case SDL_SCANCODE_2:
-            case SDL_SCANCODE_3:
-            case SDL_SCANCODE_4:
-            case SDL_SCANCODE_5:
-            case SDL_SCANCODE_6:
-            case SDL_SCANCODE_7:
-            case SDL_SCANCODE_8:
-            case SDL_SCANCODE_9:
-                keys.push(event.key.keysym.scancode + ('1' - SDL_SCANCODE_1));
-                break;
-            case SDL_SCANCODE_0:
-                keys.push('0');
-                break;
-            case SDL_SCANCODE_A:
-            case SDL_SCANCODE_B:
-            case SDL_SCANCODE_C:
-            case SDL_SCANCODE_D:
-            case SDL_SCANCODE_E:
-            case SDL_SCANCODE_F:
-            case SDL_SCANCODE_G:
-            case SDL_SCANCODE_H:
-            case SDL_SCANCODE_I:
-            case SDL_SCANCODE_J:
-            case SDL_SCANCODE_K:
-            case SDL_SCANCODE_L:
-            case SDL_SCANCODE_M:
-            case SDL_SCANCODE_N:
-            case SDL_SCANCODE_O:
-            case SDL_SCANCODE_P:
-            case SDL_SCANCODE_Q:
-            case SDL_SCANCODE_R:
-            case SDL_SCANCODE_S:
-            case SDL_SCANCODE_T:
-            case SDL_SCANCODE_U:
-            case SDL_SCANCODE_V:
-            case SDL_SCANCODE_W:
-            case SDL_SCANCODE_X:
-            case SDL_SCANCODE_Y:
-            case SDL_SCANCODE_Z:
-                keys.push(event.key.keysym.scancode + ('a' - SDL_SCANCODE_A));
-                break;
-            case SDL_SCANCODE_UP:
-                keys.push(72);
-                keys.push(0);
-                break;
-            case SDL_SCANCODE_DOWN:
-                keys.push(80);
-                keys.push(0);
-                break;
-            case SDL_SCANCODE_LEFT:
-                keys.push(75);
-                keys.push(0);
-                break;
-            case SDL_SCANCODE_RIGHT:
-                keys.push(77);
-                keys.push(0);
-                break;
-            case SDL_SCANCODE_BACKSPACE:
-                keys.push(8);
-                break;
-            case SDL_SCANCODE_RETURN:
-                keys.push(13);
-                break;
-            case SDL_SCANCODE_ESCAPE:
-                keys.push(27);
-                break;
-            case SDL_SCANCODE_APOSTROPHE:
-                keys.push(39);
-                break;
-            case SDL_SCANCODE_SPACE:
-                keys.push(' ');
-                break;
-            case SDL_SCANCODE_DELETE:
-                keys.push('*');
-                break;
-            case SDL_SCANCODE_MINUS:
-                keys.push('-');
-                break;
-            case SDL_SCANCODE_COMMA:
-                keys.push(',');
-                break;
-            case SDL_SCANCODE_SLASH:
-                keys.push('/');
-            case SDL_SCANCODE_KP_COLON:
-            case SDL_SCANCODE_SEMICOLON:
-                keys.push(':');
-            case SDL_SCANCODE_F1: {
-                static bool captured = false;
-                captured = !captured;
-                SDL_SetRelativeMouseMode((SDL_bool) captured);
-            }
-            default:
-                break;
-            }
-        }
-    }
-
-    if (ldown)
-        mpul |= 1u;
-    if (rdown)
-        mpul |= 2u;
-}
+// Mouse motion and buttons since the last call (INT 33h functions 0Bh, 03h).
+void handle_input() { plat_mouse(&mdltx, &mdlty, &mpul); }
 
 // Clears a rectangular region of the video memory.
 // Either x2 & y2 OR l and h must be specified.
@@ -5750,11 +5584,12 @@ void polycupola(float y_or, int8_t textured) {
 
 clock_t gtime;
 
-void sync_start() { gtime = clock(); }
+void sync_start() { gtime = bios_clock(); }
 
 void sync_stop() {
-    while (clock() == gtime)
-        ;
+    if (bios_clock() == gtime) {
+        wait_tick();
+    }
 }
 
 int32_t global_surface_seed;

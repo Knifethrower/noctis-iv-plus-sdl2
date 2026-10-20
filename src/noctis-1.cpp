@@ -4076,8 +4076,8 @@ void planetary_main() {
     // Fade to black (blank frame.)
     for (w = 64; w >= 0; w -= 4) {
         tavola_colori((const uint8_t*) return_palette, 0, 256, w, w, w);
-
         swapBuffers();
+        wait_tick();
     }
 
     // regolazione della forza di gravit?.
@@ -4464,7 +4464,7 @@ void planetary_main() {
         }
     } else {
         nosurfacefile:
-        brtl_srand (clock());
+        brtl_srand (bios_clock());
         pos_x = 1638400;
         pos_z = 1638400;
         pos_y = hpoint (pos_x, pos_z) - 3.2E5;
@@ -4928,7 +4928,7 @@ void planetary_main() {
                     fast_srand ( ((int32_t)(pos_x) >> 10) + ((int32_t)(pos_z) >> 10) );
                 } else {
                     // e molto pi? variabili sull'acqua
-                    fast_srand (pos_x + pos_z + clock() * 3);
+                    fast_srand (pos_x + pos_z + bios_clock() * 3);
                 }
 
                 flicks = fabs(wp * 50) + 100;
@@ -5380,8 +5380,8 @@ void planetary_main() {
                 wdircos = cos (wdir) * wp;
                 wdirsin -= (pos_z - refz) * 0.333;
                 wdircos -= (pos_x - refx) * 0.333;
-                brtl_srand (clock());
-                fast_srand (clock() % 18);
+                brtl_srand (bios_clock());
+                fast_srand (bios_clock() % 18);
                 ptr = brtl_random(3) + 1 ;
 
                 while (ptr) {
@@ -5393,7 +5393,7 @@ void planetary_main() {
                     setfx (1);
                     forward(-1000);
                     ptr = brtl_random (25 * flashes) + 50;
-                    temp = (float)(clock() % 18) * 100;
+                    temp = (float)(bios_clock() % 18) * 100;
 
                     while (ptr) {
                         drop_x = pos_x + fast_random (1023) - fast_random (1023);
@@ -5422,9 +5422,9 @@ void planetary_main() {
                     waveratio = 4;
                 }
 
-                if (!(clock() % waveratio)) {
+                if (!(bios_clock() % waveratio)) {
                     from_user ();
-                    brtl_srand (clock());
+                    brtl_srand (bios_clock());
                     wr[lw] = 200;
                     wh[lw] = brtl_random (100)    + fabs(3 * step);
                     wy[lw] = 50          + fabs(3 * step);
@@ -5820,8 +5820,8 @@ void planetary_main() {
     // Fade to black (return blank frame).
     for (w = 64; w >= 0; w -= 4) {
         tavola_colori((const uint8_t*) surface_palette, 0, 256, w, w, w);
-
         swapBuffers();
+        wait_tick();
     }
 
     nodissolve:

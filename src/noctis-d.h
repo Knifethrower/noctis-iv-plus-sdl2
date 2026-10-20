@@ -17,7 +17,7 @@
 #ifdef _WIN32
 #define SDL_MAIN_HANDLED
 #endif
-#include <SDL2/SDL.h>
+#include "platform.h"
 
 /*
 
@@ -171,9 +171,8 @@ struct pvlist {
 };
 
 // Timing-related defines
-#define DBL_CLICK_CUTOFF 125000 // 250 ms? idk...
+#define DBL_CLICK_CUTOFF 9 // BIOS ticks, as in the original
 
-#define FRAME_TIME_MILLIS 55 // To correspond with the 55ms clock in DOS
 
 
 // Used to indicate WASD movement direction.

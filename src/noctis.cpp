@@ -6,8 +6,6 @@
 #include "brtl.h"
 #include "noctis-0.h"
 #include "noctis-d.h"
-#include <chrono>
-#include <thread>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -701,7 +699,7 @@ void screen() {
         fast_srand((int32_t) secs);
         c = fast_random(3) + 2;
 
-        if (clock() % c) {
+        if (bios_clock() % c) {
             return;
         }
     }
@@ -743,7 +741,7 @@ void screen() {
             }
 
             if (ctb[t] >= 'A' && ctb[t] <= 'Z') {
-                digit_at(ctb[t], -6, -16, 4, blinkscolor - 12 * (clock() % 6),
+                digit_at(ctb[t], -6, -16, 4, blinkscolor - 12 * (bios_clock() % 6),
                          1);
             } else {
                 if (ctb[t] >= 'a' && ctb[t] <= 'z') {
@@ -2248,7 +2246,7 @@ void dev_commands() {
                     dist = 1800;
                 }
 
-                fast_srand(clock());
+                fast_srand(bios_clock());
                 helptime = (flandom() * dist) + secs + 60;
                 status("HELP REQ.", 50);
                 gburst = 63;
@@ -2577,9 +2575,6 @@ float starmass_correction[star_classes] = {
     15000.00 // Class 11
 };
 
-SDL_Surface *sdl_surface;
-SDL_Window *window;
-SDL_Renderer *renderer;
 
 // Actual noctis stuff starts here.
 float satur, DfCoS;
@@ -2613,15 +2608,7 @@ int16_t resolve = 64;
 void loop();
 
 int main(int argc, char **argv) {
-    // Initialize SDL.
-    sdl_surface = SDL_CreateRGBSurface(0, 320, 200, 32, 0xFF000000, 0xFF0000,
-                                       0xFF00, 0xFF);
-    window = SDL_CreateWindow(
-        "Noctis IV LR", SDL_WINDOWPOS_CENTERED, // NOLINT(hicpp-signed-bitwise)
-        SDL_WINDOWPOS_CENTERED, 1280, 800,      // NOLINT(hicpp-signed-bitwise)
-        SDL_WINDOW_RESIZABLE);
-
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_TARGETTEXTURE);
+    plat_init();
 
     for (ir = 0; ir < 200; ir++) {
         m200[ir] = ir * 200;
@@ -2741,56 +2728,7 @@ int main(int argc, char **argv) {
     freeze();
 }
 
-void swapBuffers() {
-    SDL_RenderClear(renderer);
-    auto dest = static_cast<uint32_t *>(sdl_surface->pixels);
-    for (int i = 0; i < 64000; i++) {
-        uint8_t color_index = adapted[i];
-        uint32_t color_r    = currpal[color_index * 3] * 4;
-        uint32_t color_g    = currpal[color_index * 3 + 1] * 4;
-        uint32_t color_b    = currpal[color_index * 3 + 2] * 4;
-
-        uint32_t color =
-            (color_r << 24u) + (color_g << 16u) + (color_b << 8u) + 255;
-        dest[i] = color;
-    }
-    // Palette display.
-    /*for (int i = 0; i < 256; i++) {
-        uint32_t color_r    = currpal[i * 3] * 4;
-        uint32_t color_g    = currpal[i * 3 + 1] * 4;
-        uint32_t color_b    = currpal[i * 3 + 2] * 4;
-
-        uint32_t color = (color_r << 24u) + (color_g << 16u) + (color_b << 8u) +
-    255;
-
-        uint32_t line = 10 * (i / 32);
-        uint32_t col = (i * 10) % 320;
-
-        uint32_t base = line * 320 + col;
-        for (int j = 0; j < 10; j++) {
-            for (int k = 0; k < 10; k++) {
-                dest[base + j * 320 + k] = color;
-            }
-        }
-    }*/
-
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
-    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-    SDL_RenderPresent(renderer);
-    SDL_DestroyTexture(texture);
-
-    // Frame limiter (18 FPS)
-    static const auto goal = std::chrono::milliseconds(FRAME_TIME_MILLIS);
-    static auto last       = std::chrono::high_resolution_clock::now();
-
-    auto now = std::chrono::high_resolution_clock::now();
-
-    if ((now - last) < goal) {
-        std::this_thread::sleep_for(goal - (now - last));
-    }
-
-    last = now;
-}
+void swapBuffers() { plat_present(adapted, currpal); }
 
 void loop() {
     sync_start();
@@ -3021,14 +2959,14 @@ void loop() {
 
     if ((mpul & 2u) && !(p_mpul & 2u) && !right_dblclick) {
         if (!right_dblclick_timing) {
-            right_dblclick_timing = clock();
+            right_dblclick_timing = bios_clock();
             rselect = 1;
         } else {
-            if (clock() - right_dblclick_timing < DBL_CLICK_CUTOFF) {
+            if (bios_clock() - right_dblclick_timing < DBL_CLICK_CUTOFF) {
                 right_dblclick     = true;
                 right_dblclick_dir = user_beta;
             } else {
-                right_dblclick_timing = clock();
+                right_dblclick_timing = bios_clock();
                 rselect = 1;
             }
         }
@@ -3259,7 +3197,7 @@ nop:
                   gl_bytes, nearstar_x, nearstar_y, nearstar_z, nearstar_ray,
                   64, (int8_t) satur);
         } else {
-            globe((clock() / 360) % 360, adapted, s_background,
+            globe((bios_clock() / 360) % 360, adapted, s_background,
                   (uint8_t *) n_globes_map, gl_bytes, nearstar_x, nearstar_y,
                   nearstar_z, nearstar_ray, 64, (int8_t) satur);
         }
@@ -3508,7 +3446,7 @@ jpr:
         reflexes();
     }
 
-    if (!(clock() % 10)) {
+    if (!(bios_clock() % 10)) {
         clear_onboard_screen();
         control(0, "flight control drive");
         control(1, "onboard devices");
@@ -3574,7 +3512,7 @@ jpr:
     }
 
     if (leftturn) {
-        arrowcolor = 127 - 16 * (clock() % 4);
+        arrowcolor = 127 - 16 * (bios_clock() % 4);
         digit_at('-', -2900, -50, 12, arrowcolor, 0);
 
         if (revcontrols) {
@@ -3585,7 +3523,7 @@ jpr:
     }
 
     if (rightturn) {
-        arrowcolor = 127 - 16 * (clock() % 4);
+        arrowcolor = 127 - 16 * (bios_clock() % 4);
         digit_at('-', +2900, -50, 12, arrowcolor, 0);
 
         if (revcontrols) {
@@ -3617,7 +3555,7 @@ jpr:
 
         for (mc = 0; mc < 24; mc++) {
             if (labstar && mc == labstar_char) {
-                digit_at('_', -6, -15, 5, 127 - 2 * (clock() % 32), 0);
+                digit_at('_', -6, -15, 5, 127 - 2 * (bios_clock() % 32), 0);
             }
 
             digit_at(star_label[mc], -6, -15, 5, 127, 1);
@@ -3671,7 +3609,7 @@ jpr:
 
         for (mc = 0; mc < 24; mc++) {
             if (labplanet && mc == labplanet_char) {
-                digit_at('_', -6, -15, 5, 127 - 2 * (clock() % 32), 0);
+                digit_at('_', -6, -15, 5, 127 - 2 * (bios_clock() % 32), 0);
             }
 
             digit_at(planet_label[mc], -6, -15, 5, 112, 1);
@@ -4493,7 +4431,7 @@ resynctoplanet:
     l_dsd -= l_dsd * eclipse;
 
     if (elight) {
-        ir3 = (int32_t)(ilight + 30 - clock() % 30 + l_dsd);
+        ir3 = (int32_t)(ilight + 30 - bios_clock() % 30 + l_dsd);
     } else {
         ir3 = (int32_t)(ilight / 4.0 + l_dsd);
     }
@@ -4514,7 +4452,7 @@ resynctoplanet:
     l_dsd -= l_dsd * eclipse;
 
     if (elight) {
-        ig3 = (int32_t)((ilight + 30 - clock() % 30) / 2.0 + l_dsd);
+        ig3 = (int32_t)((ilight + 30 - bios_clock() % 30) / 2.0 + l_dsd);
     } else {
         ig3 = (int32_t)(ilight / 2.0 + l_dsd);
     }
@@ -4535,7 +4473,7 @@ resynctoplanet:
     l_dsd -= l_dsd * eclipse;
 
     if (elight) {
-        ib3 = (int32_t)((ilight + 30 - clock() % 30) / 4.0 + l_dsd);
+        ib3 = (int32_t)((ilight + 30 - bios_clock() % 30) / 4.0 + l_dsd);
     } else {
         ib3 = (int32_t)(ilight + l_dsd);
     }
@@ -4687,10 +4625,8 @@ resynctoplanet:
         while (resolve <= 63) {
             tavola_colori((uint8_t *) return_palette, 0, 256, resolve, resolve,
                           resolve);
-            ir = clock();
-
-            while (ir == clock())
-                ;
+            swapBuffers();
+            wait_tick();
 
             resolve += 4;
         }
