@@ -2949,7 +2949,7 @@ void loop() {
         case 25:
             mslocate(0, 0, 2);
             mswrite(0, "SESSION ID ");
-            fast_srand((int32_t)(secs * 18));
+            fast_srand(x86_i32(secs * 18));
             sprintf(temp_distance_buffer, "%05lu%05lu", fast_random(0x7FFF),
                     fast_random(0x7FFF));
             mswrite(0, temp_distance_buffer);
@@ -3567,7 +3567,7 @@ jpr:
             dxx = -16;
         }
 
-        entity = (uint8_t) dxx;
+        entity = (uint8_t) x86_i32(dxx);
         screen();
         setfx(0);
     }

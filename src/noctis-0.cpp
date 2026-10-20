@@ -2601,13 +2601,13 @@ void glowing_globe(int16_t start, uint8_t *target, const uint8_t *offsetsmap,
             if ((curr & 0x03u) == 0) {
                 int16_t offset = (int8_t) offsetsmap[j];
                 temp           = offset;
-                temp         = (uint16_t) round(((int16_t) temp) * mag_factor);
+                temp         = (uint16_t) x86_i32(round(((int16_t) temp) * mag_factor));
                 uint16_t pos = temp + center_y;
                 if (pos > 10 && pos < 190) { // Y bounds.
                     offset = (int8_t) offsetsmap[j + 1];
                     pos    = 320 * pos;
                     temp   = offset;
-                    temp   = (uint16_t) round(((int16_t) temp) * mag_factor);
+                    temp   = (uint16_t) x86_i32(round(((int16_t) temp) * mag_factor));
                     offset = temp + center_x;
                     // X bounds. Don't ask why it's 6. It just works.
                     if (offset > 6 && offset < 310) {
@@ -4115,7 +4115,7 @@ void surface(int16_t logical_id, int16_t type, double seedval,
      * rotation of the planet, in degrees, from 0 to 359. The rotation period is
      * extracted in a very wide range, with 1 second resolution.
      */
-    fast_srand(((int32_t)(uint32_t) seedval) + 4112);
+    fast_srand(((int32_t) x86_u32(seedval)) + 4112);
 
     /* "rtperiod" is the time, in seconds, that it takes the planet to rotate
      * one degree on its axis. The time taken for a complete rotation is
@@ -4124,7 +4124,8 @@ void surface(int16_t logical_id, int16_t type, double seedval,
     nearstar_p_rtperiod[logical_id] = 10.0 * (ranged_fast_random(50) + 1) +
                                       10.0 * ranged_fast_random(25) +
                                       ranged_fast_random(250) + 41;
-    nearstar_p_rotation[logical_id] = secs / nearstar_p_rtperiod[logical_id];
+    nearstar_p_rotation[logical_id] =
+        (int16_t) x86_i32(secs / nearstar_p_rtperiod[logical_id]);
     nearstar_p_rotation[logical_id] %= 360;
 
     /* Calculation of the planet's current orientation for the masking of the
@@ -4146,7 +4147,7 @@ void surface(int16_t logical_id, int16_t type, double seedval,
      * NOTE: The above comment is preserved for posterity, but its statements on
      * the standard library random functions are not necessarily accurate.
      */
-    fast_srand((int32_t)(uint32_t)(seedval * 10));
+    fast_srand((int32_t) x86_u32(seedval * 10));
     seed = fast_random(0xFFFF);
 
     /* Preparation of a standard surface (random pattern 0 .. 62): it is then
@@ -4247,7 +4248,7 @@ void surface(int16_t logical_id, int16_t type, double seedval,
 
             switch (brtl_random(2)) {
             case 0:
-                cx = (((int32_t)(uint32_t)(10 * secs)) /
+                cx = (((int32_t) x86_u32(10 * secs)) /
                       (ranged_fast_random(3600) + 180)) %
                      360;
                 gr = ranged_fast_random(12) + 2;
@@ -5609,7 +5610,7 @@ double dsd; // To measure distances.
 // Load the bitmap for the star surface.
 // Implementation is sketchy at best.
 void load_starface() {
-    auto seed  = static_cast<uint16_t>(nearstar_identity * 12345);
+    auto seed  = (uint16_t) x86_i32(nearstar_identity * 12345);
     int16_t ax = seed;
     for (int i = 0; i < 64800; i++) {
         ax += (64800 - i);

@@ -3202,7 +3202,7 @@ void build_surface() {
     fast_srand (landing_pt_lat * landing_pt_lon);
     brtl_srand (landing_pt_lat * landing_pt_lon);
 
-    if ((int32_t)(nearstar_identity * 1E6) == -37828) {
+    if (x86_i32(nearstar_identity * 1E6) == -37828) {
         // Questa stella ? Balastrackonastreya
         if (ip_targetted == 3) {
             // Questo mondo ? Felysia:
@@ -3246,7 +3246,7 @@ void build_surface() {
         }
     }
 
-    if ((int32_t)(nearstar_identity * 1E8) == -11543634L) {
+    if (x86_i32(nearstar_identity * 1E8) == -11543634L) {
         // Questa stella ? Ylastravenia, fu esplorata
         // per prima (? vicinissima a Balastrackonastreya)
         // ed il quarto pianeta, Suricrasia, venne colonizzato

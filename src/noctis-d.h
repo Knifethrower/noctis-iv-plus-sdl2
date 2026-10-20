@@ -172,4 +172,17 @@ struct pvlist {
 
 // Timing-related defines
 #define DBL_CLICK_CUTOFF 9 // BIOS ticks, as in the original
+
+// Float to integer as on x86-64, where the port was checked against the DOS
+// original: out of range gives INT_MIN, unsigned 32-bit wraps through 64 bits.
+// ARM saturates instead, which would change seeds and the generated worlds.
+static inline int64_t x86_i64(double v) {
+    return (v >= -9223372036854775808.0 && v < 9223372036854775808.0) ? (int64_t) v
+                                                                      : INT64_MIN;
+}
+static inline int32_t x86_i32(double v) {
+    return (v > -2147483649.0 && v < 2147483648.0) ? (int32_t) v : INT32_MIN;
+}
+static inline uint32_t x86_u32(double v) { return (uint32_t) x86_i64(v); }
+
 #include "plus.h"

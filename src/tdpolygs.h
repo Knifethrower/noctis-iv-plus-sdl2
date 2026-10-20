@@ -1515,8 +1515,8 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
 
         k4 = 1.0f / _z;
 
-        u = round((_x * tempXsize) * k4);
-        v = round((_y * tempYsize) * k4);
+        u = x86_i32(round((_x * tempXsize) * k4));
+        v = x86_i32(round((_y * tempYsize) * k4));
 
         sections = fpart[i] - ipart[i];
         fakedi   = 320 * i + ipart[i] -
@@ -1559,8 +1559,8 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
         tempu = u;
         tempv = v;
 
-        u = round((_x * tempXsize) * k4);
-        v = round((_y * tempYsize) * k4);
+        u = x86_i32(round((_x * tempXsize) * k4));
+        v = x86_i32(round((_y * tempYsize) * k4));
 
         tax    = tempu;
         tdx    = tempv;
@@ -1739,8 +1739,8 @@ void polymap(float *x, float *y, float *z, int8_t nv, uint8_t tinta) {
 
         reallytempfakedi = tempfakedi;
 
-        u = round((_x * tempXsize) * k4);
-        v = round((_y * tempYsize) * k4);
+        u = x86_i32(round((_x * tempXsize) * k4));
+        v = x86_i32(round((_y * tempYsize) * k4));
 
         tax    = tempu;
         tdx    = tempv;
