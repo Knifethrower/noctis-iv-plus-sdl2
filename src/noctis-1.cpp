@@ -1486,7 +1486,7 @@ void fragment(int32_t x, int32_t z) {
     // diminuisce in generale il numero di oggetti visibili
     // nella distanza... eh, b?, anche la velocit? vuole la
     // sua parte, ? assurdo ma consigliabile. E si nota poco.
-    if (depth > 16) {
+    if (depth > 255) { // Plus: extended viewfield of objects
         count >>= 1;
 
         if (!count) {
@@ -3971,8 +3971,14 @@ int8_t entryflag = 0; // flag: se settato all'ingresso di planetary_main,
 // significa che si sta recuperando la situazione
 // di superficie.
 
+// Plus: jump and jetpack state.
+int8_t jumping = 0;
+int8_t jetpack = 0;
+static int8_t movie_paused = 0;
+
 void planetary_main() {
     const int16_t widesnappingangle = 71;
+    fcs_status_delay = 0; // Plus: no ghost UNLOCKING message
     uint16_t pqw = QUADWORDS;
     int32_t     cpos;
     int8_t     bfa        = 0;
@@ -3983,10 +3989,11 @@ void planetary_main() {
     int8_t     atmosphere = 1;
     /*global*/opencapcount = 1;
     int16_t  opencapdelta = 0;
-    int16_t  openhudcount = 180;
-    int16_t  openhuddelta = 0;
-    int8_t     hud_rtl_closed   = 1;
     int8_t     widesnapping = 0;
+    int8_t     raw_widesnap = 0;
+    int32_t    moviedelay = 0;
+    int32_t    moviefsec = 1;
+    int32_t    movie_cutoff = 0;
     int16_t      w, lw = 10, now = 25, waveratio = 5, waveblur = 0;
     int16_t      flick, flicks, fshift;
     int8_t     secondarysun = 0;
@@ -4429,11 +4436,12 @@ void planetary_main() {
     /* generazione animali e altre forme di vita indigene, qualora presenti. */
     setup_animals ();
     /* inizio del ciclo d'esplorazione. */
+    moviestat = 0;
     int16_t bounces = 0;
     int16_t resolve = 1;
     float   fixed_step = 0;
     int8_t    t[54];
-    int16_t prog;
+    int32_t prog;
     int32_t    line;
     exitflag = 0;
 
@@ -4452,9 +4460,6 @@ void planetary_main() {
             fread(&pos_z, 4, 1, sfh);
             fread(&user_alfa, 4, 1, sfh);
             fread(&user_beta, 4, 1, sfh);
-            fread(&openhuddelta, 2, 1, sfh);
-            fread(&openhudcount, 2, 1, sfh);
-            fread(&hud_rtl_closed, 1, 1, sfh);
             fclose(sfh);
             landed = 1;
             opencapdelta = 0;
@@ -4515,94 +4520,79 @@ void planetary_main() {
         bkstep = step;
         mpul = 0;
         handle_input();
+        // Plus: mouselook on (or right button held) turns mouse Y into looking.
+        int8_t ml = (option_mouseLook > 0) ? 2 : 0;
+        int8_t mlook = (mpul & 2) ^ ml;
 
-        /*if (mpul & 2) {
+        if (mpul & 2) {
             shift += mdltx;
-            dlt_alfa -= (float) mdlty / 8;
         } else {
-            if (pos_y == 0) {
-                if (nearstar_p_type[ip_targetted] == 3) {
-                    if (sctype == ICY) {
-                        if (mpul & 1) {
-                            step += 150 * landed;
-                        }
+            dlt_beta -= (float) mdltx / 6;
+        }
 
+        if (mlook) {
+            if (option_mouseLook == 1) {
+                dlt_alfa += (float) mdlty / 8;
+            } else {
+                dlt_alfa -= (float) mdlty / 8;
+            }
+        }
+
+        if (pos_y == 0) {
+            if (nearstar_p_type[ip_targetted] == 3) {
+                if (sctype == ICY) {
+                    if (mpul & 1) {
+                        step += 150 * landed;
+                    }
+
+                    if (!mlook) {
                         step -= 10 * mdlty * landed;
-                    } else {
-                        if (sctype == PLAINS) {
-                            if (mpul & 1) {
-                                step += 75 * landed;
-                            }
+                    }
+                } else if (sctype == PLAINS) {
+                    if (mpul & 1) {
+                        step += 75 * landed;
+                    }
 
-                            step -= 5 * mdlty * landed;
-                        } else {
-                            if (mpul & 1) {
-                                step += 50 * landed;
-                            }
-
-                            step -= 2 * mdlty * landed;
-                        }
+                    if (!mlook) {
+                        step -= 5 * mdlty * landed;
                     }
                 } else {
                     if (mpul & 1) {
-                        step += 125 * landed;
+                        step += 50 * landed;
                     }
 
-                    step -= 5 * mdlty * landed;
+                    if (!mlook) {
+                        step -= 2 * mdlty * landed;
+                    }
                 }
             } else {
                 if (mpul & 1) {
-                    step += 75 * landed;
+                    step += 125 * landed;
                 }
 
+                if (!mlook) {
+                    step -= 5 * mdlty * landed;
+                }
+            }
+        } else {
+            if (mpul & 1) {
+                step += 75 * landed;
+            }
+
+            if (!mlook) {
                 step -= 5 * mdlty * landed;
             }
-
-            dlt_beta -= (float) mdltx / 6;
-            tiredness += fabs(step) * 0.000001;
-        }*/
-
-        dlt_beta -= (float) mdltx / 3;
-        dlt_alfa = (float) mdlty / 3;
-
-        // Left-right Movement
-        // shift = ;
-
-        // Left-right Camera Rotation
-        // dlt_beta;
-
-        // Up-Down Camera Rotation (Does that make sense?)
-        // dlt_alfa
-
-        const int WASD_speed = 10;
-
-        int8_t x_dir = ((int8_t) key_move_dir.right) - ((int8_t) key_move_dir.left);
-        int8_t z_dir = ((int8_t) key_move_dir.forward) - ((int8_t) key_move_dir.backward);
-
-        if (x_dir || z_dir) {
-            uint8_t surface_speed_multiplier = 5;
-            if (pos_y == 0) {
-                if (nearstar_p_type[ip_targetted] == 3) {
-                    if (sctype == ICY) {
-                        surface_speed_multiplier = 10;
-                    } else if (sctype != PLAINS) {
-                        surface_speed_multiplier = 2;
-                    }
-                }
-            }
-
-            step += surface_speed_multiplier * z_dir * WASD_speed * landed;
-            shift += surface_speed_multiplier * x_dir * WASD_speed * landed;
-
-            tiredness += fabs(step) * 0.000001;
         }
+
+        tiredness += fabs(step) * 0.000001;
 
         // causa una scivolata su pareti ripide discese rapidamente,
         // mentre in circostanze normali aggiorna la direzione di
         // avanzamento (che pu? non coincidere con quella in cui si
         // guarda, appunto durante le scivolate o per brevi voli su
         // pianeti con scarsa gravit?).
-        if (pos_y < crcy) {
+        // Plus: steering stays on while the jetpack fires.
+        if (pos_y < crcy && landed && !jetpack) {
             shift = bkshift;
             step = bkstep;
         } else {
@@ -4685,38 +4675,38 @@ void planetary_main() {
             }
         }
 
-        // resistenza in salita.
-        if (landed) {
+        // resistenza in salita (Plus: not while jumping).
+        if (landed && !jumping) {
             drop_x  = pp_gravity * 0.012;
             drop_x *= hpoint (refx, refz) - hpoint (pos_x, pos_z);
             drop_x -= 2.4;
+        } else {
+            drop_x = 0;
+        }
 
-            if (drop_x > 0) {
-                if (drop_x > 1) {
-                    drop_x = 1;
-                } else {
-                    drop_x *= drop_x;
-                }
-
-                shift *= 1 - drop_x;
-                step *= 1 - drop_x;
-                pos_x = refx;
-                pos_z = refz;
-                alfa = 0;
-                beta = directional_beta - 90;
-                change_angle_of_view ();
-                p_forward(shift);
-                alfa = 0;
-                beta = directional_beta;
-                change_angle_of_view ();
-                p_forward(step);
+        if (drop_x > 0) {
+            if (drop_x > 1) {
+                drop_x = 1;
+            } else {
+                drop_x *= drop_x;
             }
 
-            if (pos_y > crcy - 1200) {
-                // This served to adjust the player's yaw slowly back to level
-                // as you moved.
-                //user_alfa /= 1 + fabs(step) * 0.000064;
-            }
+            shift *= 1 - drop_x;
+            step *= 1 - drop_x;
+            pos_x = refx;
+            pos_z = refz;
+            alfa = 0;
+            beta = directional_beta - 90;
+            change_angle_of_view ();
+            p_forward(shift);
+            alfa = 0;
+            beta = directional_beta;
+            change_angle_of_view ();
+            p_forward(step);
+        }
+
+        if (pos_y > crcy - 1200) {
+            user_alfa /= 1 + fabs(step) * 0.000064;
         }
 
         // normalizzazione area di movimento.
@@ -4995,18 +4985,15 @@ void planetary_main() {
         // alle onde ed al nuoto. sulla terraferma, tende ad
         // orientare verticalmente lo sguardo in modo da seguire
         // l'andamento dei rilievi (salite e discese).
+        // Plus: less bobbing, and no forced look down after jumps.
         if (landed && user_alfa > -40 && user_alfa < 40) {
-            if (waving_y) {
-                dlt_alfa += sin(upanddown);
-            } else {
-                if (pos_y > crcy - 2400) {
-                    drop_x = ((float)(crcy) - pos_y) * 0.001;
+            if (waving_y && !jumping) {
+                dlt_alfa += sin(upanddown) / 3;
+            } else if (jumping && pos_y > crcy - 2400) {
+                drop_x = ((float)(crcy) - pos_y) * 0.001;
 
-                    if (drop_x < 0) {
-                        drop_x *= 1.67;
-                    }
-
-                    dlt_alfa += drop_x;
+                if (drop_x < 0) {
+                    drop_x *= 1.67;
                 }
             }
         }
@@ -5069,6 +5056,16 @@ void planetary_main() {
                 pos_x -= sin(wdir) * wp * 10;
                 pos_z += cos(wdir) * wp * 10;
             }
+        }
+
+        // Plus: back on the ground ends the jump and the jetpack.
+        if (pos_y > (crcy - 200)) {
+            jumping = 0;
+            jetpack = 0;
+        }
+
+        if (pos_y < (crcy - 200)) {
+            jumping = 1;
         }
 
         // controlla se si ? tornati alla capsula.
@@ -5325,7 +5322,7 @@ void planetary_main() {
                         beta = user_beta;
                         change_angle_of_view();
                         lens_flares_for (0, 0, 0, sun_x, sun_y, sun_z,
-                                         (10 * nray1) / dsd1, 1 + (0.002 * dsd1), hud_rtl_closed, 2, 1, 1);
+                                         (10 * nray1) / dsd1, 1 + (0.002 * dsd1), hud_closed, 2, 1, 1);
                     }
                 }
             }
@@ -5339,7 +5336,7 @@ void planetary_main() {
                     beta = user_beta;
                     change_angle_of_view();
                     lens_flares_for (0, 0, 0, pri_x, pri_y, pri_z,
-                                     (10 * nray2) / dsd2, 1 + (0.002 * dsd2), hud_rtl_closed, 2, 1, 1);
+                                     (10 * nray2) / dsd2, 1 + (0.002 * dsd2), hud_closed, 2, 1, 1);
                 }
             }
         }
@@ -5445,6 +5442,13 @@ void planetary_main() {
         // subito dopo che si ? stati bagnati da un'onda...
         ends:
 
+        // Plus: status messages on the surface.
+        if (fcs_status_delay > 0 && draw_hud == 1) {
+            int16_t len = strlen(fcs_status_extended);
+            wrouthud(160 - 2 * len, 100, 0, fcs_status_extended);
+            fcs_status_delay--;
+        }
+
         if (waveblur) {
             ptr = waveblur;
 
@@ -5461,8 +5465,38 @@ void planetary_main() {
             QUADWORDS = pqw;
         }
 
+        if (moviestat) {
+            ShowMovieSetup(moviefsec, movieflashoff, moviedeck);
+        }
+
+        CalculatemovieFPS(moviefscap, moviestime);
+
+        if (graphics_menu_status == 1) { // F2: visual effects settings
+            area_clear(adapted, 13, 131, 175, 180, 0, 0, 72);
+            area_clear(adapted, 13, 138, 175, 139, 0, 0, 90);
+            wrouthud(14, 141, 0, draw_hud == 1 ? "HUD TEXT ON                          (T)"
+                                               : "HUD TEXT OFF                         (T)");
+
+            if (lens_flare_mode == 1) {
+                wrouthud(14, 148, 0, "LENS FLARES ALWAYS ON                (F)");
+            } else if (lens_flare_mode == -1) {
+                wrouthud(14, 148, 0, "LENS FLARES ALWAYS OFF               (F)");
+            } else {
+                wrouthud(14, 148, 0, "VISOR LENS FLARES ONLY               (F)");
+            }
+
+            wrouthud(14, 155, 0, seamless_border == 1 ? "SEAMLESS BORDER                      (B)"
+                                                      : "DEFAULT BORDER                       (B)");
+            wrouthud(14, 132, 0, "  NOCTIS IV+ VISUAL EFFECTS SETTINGS");
+        }
+
+        if (about) {
+            ShowAboutPage(1);
+        }
+
         // il fotogramma ? finito. ora lo visualizza.
-        surrounding (1, openhudcount);
+        surrounding (draw_hud == 1 || graphics_menu_status == 1 || moviestat == 1 || about == 1,
+                     openhudcount);
         QUADWORDS = 16000;
 
         if (!widesnapping) {
@@ -5514,7 +5548,7 @@ void planetary_main() {
             if (openhudcount >= 180) {
                 openhuddelta = 0;
                 openhudcount = 180;
-                hud_rtl_closed = 1;
+                hud_closed = 1;
             }
         }
 
@@ -5533,7 +5567,7 @@ void planetary_main() {
                 dzat_x = backup_dzat_x;
                 dzat_y = backup_dzat_y;
                 dzat_z = backup_dzat_z;
-                snapshot (9997 + widesnapping, 1);
+                snapshot (9997 + widesnapping, !raw_widesnap);
                 dzat_x = 0;
                 dzat_y = 0;
                 dzat_z = 0;
@@ -5547,7 +5581,8 @@ void planetary_main() {
                 widesnapping = 0;
                 user_beta += widesnappingangle;
                 //
-                FILE* oh, *i9997, *i9998, *i9999;
+                FILE* oh, *i9997 = nullptr, *i9998 = nullptr, *i9999 = nullptr;
+                int8_t recycled = 0;
                 FILE* ih = sa_open (header_bmp);
 
                 if (ih == nullptr) {
@@ -5559,16 +5594,22 @@ void planetary_main() {
                 t[19] = 0x03;
                 fclose (ih);
                 //
-                prog = -1;
+                prog = lastSnapshot;
 
                 do {
                     prog++;
 
-                    if (prog == 9999) {
-                        goto wserror;
+                    if (prog == 100000000) {
+                        if (recycled) {
+                            status("TOO MANY SNAPSHOTS", 300);
+                            goto wserror;
+                        }
+
+                        recycled = 1;
+                        prog = 0;
                     }
 
-                    sprintf((char*) snapfilename, "gallery/SNAP%04d.BMP", prog);
+                    sprintf((char*) snapfilename, "gallery/%08d.BMP", (int) prog);
                     ih = fopen((char*) snapfilename, "rb");
 
                     if (ih != nullptr) {
@@ -5576,24 +5617,12 @@ void planetary_main() {
                     }
                 } while (ih != nullptr);
 
-                //
-                i9997 = fopen ("gallery/SNAP9997.BMP", "rb");
-                i9998 = fopen ("gallery/SNAP9998.BMP", "rb");
-                i9999 = fopen ("gallery/SNAP9999.BMP", "rb");
+                lastSnapshot = prog;
+                i9997 = fopen ("gallery/WIDE9997.BMP", "rb");
+                i9998 = fopen ("gallery/WIDE9998.BMP", "rb");
+                i9999 = fopen ("gallery/WIDE9999.BMP", "rb");
 
                 if (i9997 == nullptr || i9998 == nullptr || i9999 == nullptr) {
-                    if (i9997 != nullptr) {
-                        fclose (i9997);
-                    }
-
-                    if (i9998 != nullptr) {
-                        fclose (i9998);
-                    }
-
-                    if (i9999 != nullptr) {
-                        fclose (i9999);
-                    }
-
                     goto wserror;
                 }
 
@@ -5640,9 +5669,45 @@ void planetary_main() {
                 fclose (oh);
                 //
                 wserror:
-                remove ("gallery/SNAP9997.BMP");
-                remove ("gallery/SNAP9998.BMP");
-                remove ("gallery/SNAP9999.BMP");
+                if (i9997 != nullptr) {
+                    fclose (i9997);
+                }
+
+                if (i9998 != nullptr) {
+                    fclose (i9998);
+                }
+
+                if (i9999 != nullptr) {
+                    fclose (i9999);
+                }
+
+                remove ("gallery/WIDE9997.BMP");
+                remove ("gallery/WIDE9998.BMP");
+                remove ("gallery/WIDE9999.BMP");
+            }
+        }
+
+        // Plus moviemaker.
+        if (movie) {
+            moviedelay = moviedelay - 1;
+
+            if (moviedelay <= 0) {
+                widesnapping = 0;
+                snapshot (0, 0);
+                moviedelay = moviefsec;
+            }
+
+            // Counts frames while the pod returns: recording stops after 100
+            // so the pod can leave the planet.
+            if (!landed && recover) {
+                movie_cutoff++;
+            }
+
+            if (movie_cutoff > 100) {
+                movie = 0;
+                moviedeck++;
+                movieexists = 0;
+                movie_paused = 0;
             }
         }
 
@@ -5655,49 +5720,119 @@ void planetary_main() {
 
                 if (w == 0x49) {
                     openhuddelta = -5;
-                    hud_rtl_closed = 0;
+                    hud_closed = 0;
                 }
 
                 if (w == 0x51) {
                     openhuddelta = +5;
                 }
 
-                /*  if (w == 80) {
-                    latitude++;
-                    alfa = deg * (90 - latitude);
-                    beta = deg * exposure;
-                    sun_x = -dsd1 * cos(beta) * sun_x_factor;
-                    sun_y = -dsd1 * sin(beta) * sin(alfa);
-                    sun_z = +dsd1 * sin(beta) * cos(alfa);
-                    alfa = deg * (90 - latitude + pri_latitude);
-                    beta = deg * pri_exposure;
-                    pri_x = -dsd2 * cos(beta) * pri_sun_x_factor;
-                    pri_y = -dsd2 * sin(beta) * sin(alfa);
-                    pri_z = +dsd2 * sin(beta) * cos(alfa);
+                if (w == 83) { // Delete: raw snapshot
+                    snapshot (0, 0);
+                }
+
+                if (w == 0x3D) { // F3: moviemaker
+                    moviestat = !moviestat;
+
+                    if (moviestat) {
+                        about = 0;
+                        graphics_menu_status = 0;
                     }
-                    if (w == 72) {
-                    latitude--;
-                    alfa = deg * (90 - latitude);
-                    beta = deg * exposure;
-                    sun_x = -dsd1 * cos(beta) * sun_x_factor;
-                    sun_y = -dsd1 * sin(beta) * sin(alfa);
-                    sun_z = +dsd1 * sin(beta) * cos(alfa);
-                    alfa = deg * (90 - latitude + pri_latitude);
-                    beta = deg * pri_exposure;
-                    pri_x = -dsd2 * cos(beta) * pri_sun_x_factor;
-                    pri_y = -dsd2 * sin(beta) * sin(alfa);
-                    pri_z = +dsd2 * sin(beta) * cos(alfa);
-                    }*/
+                }
+
+                if (w == 0x3C) { // F2: visual effects settings
+                    graphics_menu_status = !graphics_menu_status;
+
+                    if (graphics_menu_status) {
+                        moviestat = 0;
+                        about = 0;
+                    }
+                }
+
+                if (w == 0x3B) { // F1: help & about
+                    about = !about;
+
+                    if (about) {
+                        moviestat = 0;
+                        graphics_menu_status = 0;
+                    }
+                }
+
+                if (w == 0x50) { // Down: mouselook mode
+                    option_mouseLook++;
+
+                    if (option_mouseLook > 2) {
+                        option_mouseLook = 0;
+                    }
+
+                    if (option_mouseLook == 0) {
+                        status("MOUSELOOK DISABLED", 50);
+                    } else if (option_mouseLook == 1) {
+                        status("MOUSELOOK ENABLED", 50);
+                    } else {
+                        status("INVERTED Y AXIS", 50);
+                    }
+                }
+
+                if (w == 144 && moviestat && !movie && moviedeck < 999) {
+                    moviedeck++;
+                    movieexists = 0;
+                    movienr = 0;
+                }
+
+                if (w == 142 && moviestat && !movie && moviedeck > 1) {
+                    moviedeck--;
+                    movieexists = 0;
+                    movienr = 0;
+                }
             } else {
-                if (w == '+' && surlight < 63) {
+                if (w == '+' && surlight < 63 && !moviestat) {
                     surlight++;
                 }
 
-                if (w == '-' && surlight > 10) {
+                if (w == '-' && surlight > 10 && !moviestat) {
                     surlight--;
                 }
 
-                if (w == '*' && !widesnapping) {
+                if (w == '+' && moviestat && moviefsec < 999 && !movie) {
+                    moviefsec++;
+                }
+
+                if (w == '-' && moviestat && moviefsec > 1 && !movie) {
+                    moviefsec--;
+                }
+
+                if (w == 13) {
+                    if (movie == 0 && moviestat) {
+                        movie = 1;
+                        moviefscap = 0;
+                        moviestime = gtime;
+                        moviestat = 0;
+                        movienr = 0;
+                        movie_paused = 0;
+                    } else if (movie == 1) {
+                        movie = 0;
+                        movieexists = 0;
+                        moviedeck++;
+                        movie_paused = 0;
+                    }
+                }
+
+                if (w == 'f') {
+                    if (moviestat && !movie) {
+                        movieflashoff = !movieflashoff;
+                    } else if (graphics_menu_status) {
+                        if (lens_flare_mode == 0) {
+                            lens_flare_mode = 1;
+                        } else if (lens_flare_mode == 1) {
+                            lens_flare_mode = -1;
+                        } else {
+                            lens_flare_mode = 0;
+                        }
+                    }
+                }
+
+                if ((w == '*' || w == 'm') && !widesnapping) {
                     dzat_x = backup_dzat_x;
                     dzat_y = backup_dzat_y;
                     dzat_z = backup_dzat_z;
@@ -5707,85 +5842,73 @@ void planetary_main() {
                     dzat_z = 0;
                 }
 
-                if (w == '/' && !widesnapping) {
+                if ((w == '/' || w == 'n') && !widesnapping) {
                     snapshot (9997, 0);
                     widesnapping = 1;
+                    raw_widesnap = 0;
                 }
 
-                if (w == '1') {
-                    if (fixed_step == 10) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 10;
+                if ((w == 'v' || w == '.') && !widesnapping) {
+                    snapshot (9997, 0);
+                    widesnapping = 1;
+                    raw_widesnap = 1;
+                }
+
+                // 0-9: walking speed (same key again stops).
+                if (w >= '0' && w <= '9') {
+                    w = (w - '0') * 10;
+                    fixed_step = fixed_step == w ? 0 : w;
+                    goto endtype;
+                }
+
+                if (w == 'b') {
+                    if (widesnapping == 0 && graphics_menu_status == 0) {
+                        snapshot (0, 0);
+                    } else if (graphics_menu_status == 1) {
+                        seamless_border = !seamless_border;
                     }
                 }
 
-                if (w == '2') {
-                    if (fixed_step == 20) {
-                        fixed_step = 0;
+                if (w == 't' && graphics_menu_status == 1) {
+                    draw_hud = !draw_hud;
+                }
+
+                if (w == 'c') {
+                    jetpack = 0;
+                }
+
+                if (w == 'j' && pos_y > crcy - 10) {
+                    gravity -= gravity + 500;
+                    jumping = 1;
+                }
+
+                if (w == ' ' && landed) { // jetpack (not from inside the pod)
+                    blinkhudlights = 1;
+                    blinkhudlights_stay = 0;
+
+                    if (pos_y > crcy - 150) {
+                        gravity -= gravity + 500;
                     } else {
-                        fixed_step = 20;
+                        gravity = gravity - 50;
+                        jumping = 1;
+                        jetpack = 1;
                     }
                 }
 
-                if (w == '3') {
-                    if (fixed_step == 30) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 30;
+                if (w == 'p') {
+                    if (movie) {
+                        movie = 0;
+                        moviestat = 1;
+                        movie_paused = 1;
+                    } else if (moviestat && movie_paused) {
+                        movie = 1;
+                        moviestat = 0;
+                        movie_paused = 0;
                     }
                 }
 
-                if (w == '4') {
-                    if (fixed_step == 40) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 40;
-                    }
-                }
-
-                if (w == '5') {
-                    if (fixed_step == 50) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 50;
-                    }
-                }
-
-                if (w == '6') {
-                    if (fixed_step == 60) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 60;
-                    }
-                }
-
-                if (w == '7') {
-                    if (fixed_step == 70) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 70;
-                    }
-                }
-
-                if (w == '8') {
-                    if (fixed_step == 80) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 80;
-                    }
-                }
-
-                if (w == '9') {
-                    if (fixed_step == 90) {
-                        fixed_step = 0;
-                    } else {
-                        fixed_step = 90;
-                    }
-                }
-
-                if (w == '0') {
-                    fixed_step = 0;
+                if (w == 'l' && pos_y < crcy + 10) { // back down to the surface
+                    gravity = gravity + 400;
                 }
 
                 if (w == 27 && landed) {
@@ -5803,9 +5926,6 @@ void planetary_main() {
                         fwrite(&pos_z, 4, 1, sfh);
                         fwrite(&user_alfa, 4, 1, sfh);
                         fwrite(&user_beta, 4, 1, sfh);
-                        fwrite(&openhuddelta, 2, 1, sfh);
-                        fwrite(&openhudcount, 2, 1, sfh);
-                        fwrite(&hud_rtl_closed, 1, 1, sfh);
                         fclose(sfh);
                         exitflag = 1;
                         goto nodissolve;
@@ -5813,6 +5933,8 @@ void planetary_main() {
                 }
             }
         }
+
+        endtype:;
     } while (1);
 
     /* operazioni di recupero per ritornare al ciclo principale. */

@@ -15,6 +15,7 @@ static int scaled_k;
 static std::deque<int16_t> keybuf;
 static int mouse_dx, mouse_dy;
 static uint16_t mouse_buttons;
+static uint16_t mouse_pressed; // clicks shorter than a frame still count
 static float mouse_scale = 1.0f;
 
 void plat_init() {
@@ -265,6 +266,7 @@ void plat_pump() {
                                                                  : 0;
             if (e.type == SDL_MOUSEBUTTONDOWN) {
                 mouse_buttons |= bit;
+                mouse_pressed |= bit;
             } else {
                 mouse_buttons &= ~bit;
             }
@@ -293,7 +295,8 @@ void plat_mouse(int16_t *dx, int16_t *dy, uint16_t *buttons) {
     plat_pump();
     *dx = (int16_t) lrintf(mouse_dx * mouse_scale);
     *dy = (int16_t) lrintf(mouse_dy * mouse_scale);
-    *buttons = mouse_buttons;
+    *buttons = mouse_buttons | mouse_pressed;
+    mouse_pressed = 0;
     mouse_dx = mouse_dy = 0;
 }
 

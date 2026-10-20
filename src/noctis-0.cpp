@@ -129,9 +129,6 @@ void tavola_colori(const uint8_t *new_palette, uint16_t starting_color,
 int16_t mdltx = 0, mdlty = 0, mouse_x = 0, mouse_y = 0;
 uint16_t mpul = 0;
 
-// Holds directions of WASD movement
-struct wasdmov key_move_dir;
-
 // Mouse motion and buttons since the last call (INT 33h functions 0Bh, 03h).
 void handle_input() { plat_mouse(&mdltx, &mdlty, &mpul); }
 

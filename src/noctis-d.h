@@ -172,15 +172,4 @@ struct pvlist {
 
 // Timing-related defines
 #define DBL_CLICK_CUTOFF 9 // BIOS ticks, as in the original
-
-
-
-// Used to indicate WASD movement direction.
-// Exists for ease of readability
-struct wasdmov {
-	bool forward;
-	bool backward;
-	bool left;
-	bool right;
-};
 #include "plus.h"
