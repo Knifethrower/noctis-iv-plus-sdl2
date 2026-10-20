@@ -10,6 +10,10 @@ void plat_init();
 // Shows a 320x200 8-bit frame with a 6-bit VGA palette (768 bytes), at 4:3.
 void plat_present(const uint8_t *frame, const uint8_t *palette);
 
+// What the original drew straight to video memory when taking a snapshot:
+// the whole screen in color 0 (-1), or a line at the bottom in that color.
+void screen_flash(int16_t line_color);
+
 // BIOS timer ticks (18.2065 Hz), what clock() returned under Borland C++.
 int32_t bios_clock();
 // Sleeps until bios_clock() moves on.

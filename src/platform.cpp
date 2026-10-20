@@ -3,6 +3,7 @@
 #include <SDL.h>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 
 static SDL_Window *window;
@@ -87,7 +88,14 @@ static void draw_scaled(const SDL_Rect &dst) {
     SDL_RenderCopy(renderer, scaled_tex, nullptr, &dst);
 }
 
+static uint8_t last_frame[64000], last_palette[768];
+
 void plat_present(const uint8_t *frame, const uint8_t *palette) {
+    if (frame != last_frame) {
+        memcpy(last_frame, frame, sizeof(last_frame));
+    }
+    memcpy(last_palette, palette, sizeof(last_palette));
+
     uint32_t argb[256];
     for (int i = 0; i < 256; i++) {
         uint32_t r = palette[i * 3] & 63, g = palette[i * 3 + 1] & 63,
@@ -287,4 +295,13 @@ void plat_mouse(int16_t *dx, int16_t *dy, uint16_t *buttons) {
     *dy = (int16_t) lrintf(mouse_dy * mouse_scale);
     *buttons = mouse_buttons;
     mouse_dx = mouse_dy = 0;
+}
+
+void screen_flash(int16_t line_color) {
+    if (line_color < 0) {
+        memset(last_frame, 0, sizeof(last_frame));
+    } else {
+        memset(last_frame + 198 * 320 + 1, line_color, 318);
+    }
+    plat_present(last_frame, last_palette);
 }

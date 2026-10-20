@@ -100,7 +100,7 @@ void alogena() {
     }
 
     if (ilightv == 1 && !elight) {
-        lens_flares_for(cam_x, cam_y, cam_z, -10, 10, -10, -50000, 2, 1, 0, 1,
+        lens_flares_for(cam_x, cam_y, cam_z, -10, 10, -10, -50000, 2, hud_closed, 0, 1,
                         1);
     }
 }
@@ -399,6 +399,21 @@ int32_t goesfile_pos      = 0;      // Position of the GOES output file
 char goesnet_command[120] = "_";    // GOES Net Command Line
 const char *comm = "data/comm.bin"; // File di comunicazione dei moduli.
 
+// Noctis IV Plus: options, HUD visor, moviemaker.
+int16_t roofspeed            = 0;
+int16_t openhudcount         = 180;
+int16_t openhuddelta         = 0;
+int8_t hud_closed            = 1;
+int8_t draw_hud              = 1;
+int8_t lens_flare_mode       = 0;
+int8_t seamless_border       = 0;
+int8_t graphics_menu_status  = 0;
+int8_t moviestat             = 0;
+int8_t about                 = 0;
+static int32_t moviedelay    = 0;
+static int32_t moviefsec     = 1;
+static int8_t moviepaused    = 0;
+
 /* Freezes the situation (when exiting the program or running a module). */
 
 void freeze() {
@@ -481,6 +496,14 @@ void freeze() {
     fwrite(&gnc_pos, 1, 1, fh);
     fwrite(&goesfile_pos, 1, 4, fh);
     fwrite(goesnet_command, 1, 120, fh);
+    // Noctis IV Plus additions, DOS sizes.
+    fwrite(&lastSnapshot, 1, 4, fh);
+    fwrite(&option_mouseLook, 1, 1, fh);
+    fwrite(&roofspeed, 1, 2, fh);
+    fwrite(&hud_closed, 1, 1, fh);
+    fwrite(&draw_hud, 1, 1, fh);
+    fwrite(&lens_flare_mode, 1, 1, fh);
+    fwrite(&seamless_border, 1, 1, fh);
 
     fclose(fh);
 }
@@ -1385,10 +1408,10 @@ void other_vehicle_at(double ovhx, double ovhy, double ovhz) {
 
     resetfx();
     cam_z -= 3100;
-    lens_flares_for(cam_x, cam_y, cam_z, 3225, 0, 0, -5e5, 3, 1, 1, 1, 1);
-    lens_flares_for(cam_x, cam_y, cam_z, -3225, 0, 0, -5e5, 3, 1, 1, 1, 1);
-    lens_flares_for(cam_x, cam_y, cam_z, 3225, 0, -6150, -5e5, 3, 1, 1, 1, 1);
-    lens_flares_for(cam_x, cam_y, cam_z, -3225, 0, -6150, -5e5, 3, 1, 1, 1, 1);
+    lens_flares_for(cam_x, cam_y, cam_z, 3225, 0, 0, -5e5, 3, hud_closed, 1, 1, 1);
+    lens_flares_for(cam_x, cam_y, cam_z, -3225, 0, 0, -5e5, 3, hud_closed, 1, 1, 1);
+    lens_flares_for(cam_x, cam_y, cam_z, 3225, 0, -6150, -5e5, 3, hud_closed, 1, 1, 1);
+    lens_flares_for(cam_x, cam_y, cam_z, -3225, 0, -6150, -5e5, 3, hud_closed, 1, 1, 1);
 }
 
 /* Fine roba importata da noctis-0.cpp */
@@ -1860,17 +1883,18 @@ void devices() {
         lsecs = (int32_t) secs;
         lsecs -= lsecs % 1000000L;
         lsecs /= 1000000L;
-        other(alphavalue(lsecs));
+        lsecs %= 1000;
+        other(formatTriad(lsecs));
         other(",");
         lsecs = (int32_t) secs;
         lsecs %= 1000000L;
         lsecs -= lsecs % 1000;
         lsecs /= 1000;
-        other(alphavalue(lsecs));
+        other(formatTriad(lsecs));
         other(",");
         lsecs = (int32_t) secs;
         lsecs %= 1000;
-        other(alphavalue(lsecs));
+        other(formatTriad(lsecs));
         cline(2, "parsis universal coordinates: ");
         parsis_x = round(dzat_x);
         parsis_y = round(dzat_y);
@@ -2387,7 +2411,8 @@ void unfreeze() {
         fread(&sm_consolidated, 4, 1, smh);
 
         if (!sm_consolidated) {
-            sm_consolidated = fseek(smh, 0, SEEK_END);
+            fseek(smh, 0, SEEK_END);
+            sm_consolidated = ftell(smh);
             fseek(smh, 0, SEEK_SET);
             fwrite(&sm_consolidated, 4, 1, smh);
         }
@@ -2475,8 +2500,17 @@ void unfreeze() {
     fread(&gnc_pos, 1, 1, fh);
     fread(&goesfile_pos, 1, 4, fh);
     fread(goesnet_command, 1, 120, fh);
+    fread(&lastSnapshot, 1, 4, fh);
+    fread(&option_mouseLook, 1, 1, fh);
+    fread(&roofspeed, 1, 2, fh);
+    fread(&hud_closed, 1, 1, fh);
+    fread(&draw_hud, 1, 1, fh);
+    fread(&lens_flare_mode, 1, 1, fh);
+    fread(&seamless_border, 1, 1, fh);
 
     fclose(fh);
+
+    openhudcount = hud_closed == 1 ? 180 : 0;
 
     /* Resynchronization of the situation
      * 	in relation to previous events
@@ -2586,7 +2620,7 @@ int32_t ir3, ig3, ib3, ir3e = 0, ig3e = 0, ib3e = 0;
 int16_t mc            = 0;
 uint8_t p_mpul        = 0;
 int8_t sky_palette_ok = 0;
-int8_t lselect, rselect, lrv;
+int8_t lselect, lrv;
 bool right_dblclick = false;
 float right_dblclick_dir;
 double dpz, ras, rap, dasp, eclipse;
@@ -2604,6 +2638,13 @@ int32_t p1, p2, p3, p4;
 clock_t right_dblclick_timing = 0;
 
 int16_t resolve = 64;
+
+// Plus: planet types in the local target data window.
+static const char *planet_descriptions[] = {
+    "INTERNALLY HOT", "CRATERIZED NO ATMOSPHERE", "THICK ATMOSPHERE",
+    "FELISIAN",       "CREASED NO ATMOSPHERE",    "THIN ATMOSPHERE",
+    "LARGE NOT CONSISTENT", "ICY", "QUARTZ", "SUBSTELLAR OBJECT",
+    "COMPANION STAR"};
 
 void loop();
 
@@ -2729,6 +2770,56 @@ int main(int argc, char **argv) {
 }
 
 void swapBuffers() { plat_present(adapted, currpal); }
+
+// Plus moviemaker key actions (the Plus source repeats these in each handler).
+static void movie_deck_status() {
+    char short_text[16];
+
+    if (movieexists == 2) {
+        snprintf(short_text, sizeof(short_text), "%d EXISTS", (int) moviedeck);
+    } else {
+        snprintf(short_text, sizeof(short_text), "MD %d FREE", (int) moviedeck);
+    }
+
+    status(short_text, 100);
+}
+
+// Enter: 1 = recording started, 2 = stopped, 0 = nothing.
+static int8_t movie_record_toggle() {
+    if (movie == 0 && moviestat) {
+        movie       = 1;
+        moviefscap  = 0;
+        moviestime  = gtime;
+        moviestat   = 0;
+        movienr     = 0;
+        moviepaused = 0;
+        return 1;
+    }
+
+    if (movie == 1) {
+        movie       = 0;
+        movieexists = 0;
+        moviedeck++;
+        moviepaused = 0;
+        return 2;
+    }
+
+    return 0;
+}
+
+static void movie_pause_toggle() {
+    if (movie) {
+        movie       = 0;
+        moviestat   = 1;
+        moviepaused = 1;
+        status("PAUSE REC", 100);
+    } else if (moviestat && moviepaused) {
+        movie       = 1;
+        moviestat   = 0;
+        moviepaused = 0;
+        status("RESUME REC", 100);
+    }
+}
 
 void loop() {
     sync_start();
@@ -2905,45 +2996,32 @@ void loop() {
     p_mpul = mpul;
     handle_input();
 
-    // Dev Bryce: Mouse Currently only rotates camera
-    /*if (mpul & 2u) {
-        //shift += 3 * mdltx;
-    //shift = mdlty;
-        dlt_alfa -= (float)mdlty / 8;
+    if (mpul & 2u) {
+        shift += 3 * mdltx;
+
+        if (option_mouseLook == 0) {
+            dlt_alfa -= (float) mdlty / 8;
+        } else {
+            step -= 3 * mdlty;
+
+            if (abs(mdlty) > 7) {
+                dlt_alfa = -user_alfa / 6;
+            }
+        }
     } else {
-        //step -= 3 * mdlty;
+        if (option_mouseLook == 1) {
+            dlt_alfa += (float) mdlty / 8;
+        } else if (option_mouseLook == 2) {
+            dlt_alfa -= (float) mdlty / 8;
+        } else {
+            step -= 3 * mdlty;
 
-        if (abs(mdlty) > 7) {
-            dlt_alfa = -user_alfa / 6;
+            if (abs(mdlty) > 7) {
+                dlt_alfa = -user_alfa / 6;
+            }
         }
 
-        dlt_beta -= (float)mdltx / 3;
-    }*/
-
-    dlt_beta -= (float) mdltx / 3;
-    dlt_alfa = (float) mdlty / 3;
-
-    // Left-right Movement
-    // shift = ;
-
-    // Left-right Camera Rotation
-    // dlt_beta;
-
-    // Up-Down Camera Rotation (Does that make sense?)
-    // dlt_alfa
-
-    const int WASD_speed = 20;
-
-    if ((active_screen != 0) && ((labstar == 0) && (labplanet == 0))) {
-        // +X / -X Direction
-        int8_t x_dir = ((int8_t) key_move_dir.right) - ((int8_t) key_move_dir.left);
-        // +Z / -Z Direction
-        int8_t z_dir = ((int8_t) key_move_dir.forward) - ((int8_t) key_move_dir.backward);
-
-        if (x_dir || z_dir) {
-            step += z_dir * WASD_speed;
-            shift += x_dir * WASD_speed;
-        }
+        dlt_beta -= (float) mdltx / 3;
     }
 
     // Mouse input for double left and right click.
@@ -2960,23 +3038,15 @@ void loop() {
     if ((mpul & 2u) && !(p_mpul & 2u) && !right_dblclick) {
         if (!right_dblclick_timing) {
             right_dblclick_timing = bios_clock();
-            rselect = 1;
         } else {
             if (bios_clock() - right_dblclick_timing < DBL_CLICK_CUTOFF) {
                 right_dblclick     = true;
                 right_dblclick_dir = user_beta;
             } else {
                 right_dblclick_timing = bios_clock();
-                rselect = 1;
             }
         }
-    } else {
-        rselect = 0;
     }
-
-    // Disable double clicking while a screen is selected to fix a few weird
-    // quirks.
-    right_dblclick = (right_dblclick && (active_screen == -1));
 
     if (right_dblclick) {
         if (ap_targetting) {
@@ -3160,7 +3230,7 @@ nop:
                 p_dsd < 1000 * nearstar_p_ray[ir])
                 lens_flares_for(dzat_x, dzat_y, dzat_z, plx, ply, plz,
                                 (10 * nearstar_p_ray[ir]) / p_dsd,
-                                (int16_t)(1 + (0.001 * p_dsd)), 1, 0, 3, 0);
+                                (int16_t)(1 + (0.001 * p_dsd)), hud_closed, 0, 3, 0);
         }
     }
 
@@ -3172,7 +3242,7 @@ nop:
                     lens_flares_for(dzat_x, dzat_y, dzat_z, nearstar_x,
                                     nearstar_y, nearstar_z,
                                     (10 * nearstar_ray) / l_dsd,
-                                    (int16_t)(1 + (0.001 * l_dsd)), 1, 0, 3, 0);
+                                    (int16_t)(1 + (0.001 * l_dsd)), hud_closed, 0, 3, 0);
                 }
             }
         }
@@ -3249,6 +3319,7 @@ nop:
     */
     // Controllo gestore (indicando i comandi con lo sguardo).
     //
+    active_screen = -1;
     from_user();
     leftturn  = 0;
     rightturn = 0;
@@ -3357,17 +3428,7 @@ jpr:
         // Paratia destra:
         if (user_beta > -135 && user_beta < -45 && pos_z < -104 * 15 &&
             pos_z > -262 * 15 && pos_x > 172 * 15) {
-            if (rselect) {
-                if (active_screen == -1) {
-                    active_screen = (int8_t)((pos_z + 104 * 15) / (-54 * 15));
-                    status("SELECTED", 50);
-                } else {
-                    active_screen = -1;
-                    status("DESELECTED", 50);
-                }
-            }
-        } else {
-            active_screen = -1;
+            active_screen = (int8_t)((pos_z + 104 * 15) / (-54 * 15));
         }
 
         // Paratia sinistra:
@@ -3538,7 +3599,7 @@ jpr:
     // Fornisce informazioni sullo strato esterno dell'H.U.D.
     // Qualsiasi glifo verr� in seguito trattato con dithering.
     //
-    if (active_screen != -1) {
+    if (active_screen != -1 || draw_hud != 1) {
         goto nohud_1;
     }
 
@@ -3674,12 +3735,14 @@ nohud_1:
     cam_x = -512;
     cam_y = -275;
     cam_z = -750;
-    mc    = strlen(fcs_status) - 1;
+    if (draw_hud == 1 || graphics_menu_status == 1 || moviestat == 1) {
+        mc = strlen(fcs_status_extended) - 1;
 
-    while (mc >= 0) {
-        digit_at(fcs_status[mc], -6, -15, 6, 120, 1);
-        cam_x += 45;
-        mc--;
+        while (mc >= 0) {
+            digit_at(fcs_status_extended[mc], -6, -15, 6, 120, 1);
+            cam_x += 45;
+            mc--;
+        }
     }
 
     //
@@ -3756,10 +3819,11 @@ ext_1: //
     // straordinariamente belli su uno schermo che, di per s�,
     // � poco risolutivo, sia fisicamente che cromaticamente.
     //
-    QUADWORDS -= 240;
-    psmooth_64(adapted, 200);
-    psmooth_64(adapted, 200);
-    QUADWORDS += 240;
+    pqw       = QUADWORDS;
+    QUADWORDS = 160 + openhudcount * 80;
+    psmooth_64(adapted, 160);
+    psmooth_64(adapted, 160);
+    QUADWORDS = pqw;
     //
     // Tracking of all visible stars.
     //
@@ -3811,21 +3875,28 @@ ext_1: //
                             }
                         }
 
+                        wrouthud(14, 97, mc, "                 RADIUS:");
                         wrouthud(14, 97, mc, "PRIMARY MASS:");
-                        sprintf((char *) outhudbuffer, "%1.8f BAL. M.",
-                                tmp_float);
+                        sprintf((char *) outhudbuffer, "                %1.4f",
+                                ap_target_ray);
+                        FitOutHudBuffer(16, 24);
                         wrouthud(14, 103, mc, (char *) outhudbuffer);
+                        sprintf((char *) outhudbuffer, "%1.8f", tmp_float);
+                        FitOutHudBuffer(0, 8);
+                        strcat((char *) outhudbuffer, " BAL M");
+                        wrouthud(14, 103, mc, (char *) outhudbuffer);
+                        wrouthud(14, 109, mc, "              CENTIDYAMS");
                         tmp_float /= 0.38e-4 * ap_target_ray;
 
                         if (ap_target_class == 6) {
                             tmp_float *= 0.0022;
                         }
 
-                        wrouthud(14, 113, mc, "SURFACE TEMPERATURE:");
+                        wrouthud(14, 116, mc, "SURFACE TEMPERATURE:");
                         sprintf((char *) outhudbuffer,
                                 "%1.0f@K&%1.0f@C&%1.0f@F", tmp_float + 273.15,
                                 tmp_float, tmp_float * 1.8 + 32);
-                        wrouthud(14, 119, mc, (char *) outhudbuffer);
+                        wrouthud(14, 122, mc, (char *) outhudbuffer);
                         sprintf((char *) outhudbuffer, "MAJOR BODIES: %d EST.",
                                 starnop(ap_target_x, ap_target_y, ap_target_z));
                         wrouthud(14, 129, mc, (char *) outhudbuffer);
@@ -3871,7 +3942,7 @@ ext_1: //
                         wrouthud(14, 103, mc, "TOO FAR TO ESTIMATE");
                     }
 
-                    wrouthud(14, 113, mc, "PERIOD OF REVOLUTION:");
+                    wrouthud(14, 110, mc, "PERIOD OF REVOLUTION:");
                     tmp_float = rtp(ip_targetted);
                     p1        = (int32_t)(tmp_float * 1e-9);
                     p2        = (int32_t)(tmp_float * 1e-6);
@@ -3893,7 +3964,16 @@ ext_1: //
                         }
                     }
 
-                    wrouthud(14, 119, mc, (char *) outhudbuffer);
+                    wrouthud(14, 116, mc, (char *) outhudbuffer);
+                    sprintf((char *) outhudbuffer, "       %s",
+                            planet_descriptions[nearstar_p_type[ip_targetted]]);
+                    wrouthud(14, 123, mc, (char *) outhudbuffer);
+                    wrouthud(14, 123, mc, "RADIUS:");
+                    sprintf((char *) outhudbuffer, "%1.4f",
+                            nearstar_p_ray[ip_targetted]);
+                    FitOutHudBuffer(16, 24);
+                    strcat((char *) outhudbuffer, " CENTIDYAMS");
+                    wrouthud(14, 129, mc, (char *) outhudbuffer);
                 } else {
                     wrouthud(14, 87, 21, "LOCAL TARGET NOT SET");
                 }
@@ -4016,6 +4096,10 @@ ext_1: //
         data            = 0;
     }
 
+    if (about) {
+        ShowAboutPage(0);
+    }
+
     // Draw planetary targeting cross.
     if ((ip_targetted != -1 && !ip_reached) || ip_targetting) {
         planet_xyz(ip_targetted);
@@ -4136,7 +4220,13 @@ resynctoplanet:
         dzz = dzat_z - plz;
 
         if (ip_reached && nsync) {
-            status("TRACKING", 0);
+            if (moviestat) {
+                status("MOVIEMAKER", 0);
+            } else if (graphics_menu_status == 1) {
+                status("VFX MENU", 0);
+            } else {
+                status("TRACKING", 0);
+            }
 
             if (nsync == 1) { // fixed-point chase
                 ang    = (double) deg * (double) navigation_beta;
@@ -4549,7 +4639,7 @@ resynctoplanet:
     // disegna i bordi dello scafandro, illuminati in relazione
     // all'ambiente circostante.
     //
-    surrounding(0, 180);
+    surrounding(0, openhudcount);
     // riduzione stanchezza (continua, eventualmente
     // dall'ultima volta che si � scesi in superficie)
     // e variazioni nelle pulsazioni, pi� verosimili...
@@ -4603,6 +4693,26 @@ resynctoplanet:
             resolve      = 0;
             _delay       = 13; // solo al ritorno da superficie
             goto resynctoplanet;
+        }
+    }
+
+    // Plus: HUD visor opening (PgUp) and closing (PgDn).
+    if (openhuddelta < 0) {
+        openhudcount += openhuddelta;
+
+        if (openhudcount <= 0) {
+            openhuddelta = 0;
+            openhudcount = 0;
+        }
+    }
+
+    if (openhuddelta > 0) {
+        openhudcount += openhuddelta;
+
+        if (openhudcount >= 180) {
+            openhuddelta = 0;
+            openhudcount = 180;
+            hud_closed   = 1;
         }
     }
 
@@ -4848,8 +4958,10 @@ resynctoplanet:
         }
     }
 
-    //
-    sync_stop();
+    // Plus: roof speed ('s') skips the frame wait on the roof.
+    if (!ontheroof || !roofspeed) {
+        sync_stop();
+    }
 
     /* Hook for managing the motion characteristics of planet surface features
      *
@@ -4863,12 +4975,57 @@ resynctoplanet:
     /* Keyboard input: Taking snapshots, ending the game session, selecting
      * targets, attributing labels, etc.
      */
+    if (movie) {
+        moviedelay = moviedelay - 1;
+
+        if (moviedelay <= 0) {
+            snapshot(0, 0);
+            moviedelay = moviefsec;
+        }
+    }
+
     if (ontheroof) {
         if (is_key()) {
             mc = get_key();
 
-            if (mc == '*') {
-                snapshot(0, 1);
+            if (!mc) {
+                mc = get_key();
+
+                if (mc == 0x3D) { // F3: moviemaker
+                    moviestat = !moviestat;
+                }
+
+                if (mc == 144 && moviestat && !movie && moviedeck < 999) {
+                    moviedeck++;
+                    movieexists = 0;
+                    movienr     = 0;
+                }
+
+                if (mc == 142 && moviestat && !movie && moviedeck > 1) {
+                    moviedeck--;
+                    movieexists = 0;
+                    movienr     = 0;
+                }
+            } else {
+                if (mc == '*' || mc == 'm') {
+                    snapshot(0, 1);
+                }
+
+                if (mc == 'b') {
+                    snapshot(0, 0);
+                }
+
+                if (mc == 13) {
+                    movie_record_toggle();
+                }
+
+                if (mc == 'f' && moviestat && !movie) {
+                    movieflashoff = !movieflashoff;
+                }
+
+                if (mc == 'p') {
+                    movie_pause_toggle();
+                }
             }
         } else {
             mc = 0;
@@ -4895,6 +5052,61 @@ resynctoplanet:
 
             if (!mc) {
                 mc = get_key();
+
+                if (mc == 0x3B) { // F1: help & about
+                    about = !about;
+
+                    if (about) {
+                        moviestat            = 0;
+                        graphics_menu_status = 0;
+                    }
+                }
+
+                if (mc == 0x3C) { // F2: visual effects menu
+                    if (graphics_menu_status == 0) {
+                        graphics_menu_status = 1;
+                        moviestat            = 0;
+                        about                = 0;
+                        status("VFXMENU ON", 100);
+                    } else {
+                        graphics_menu_status = 0;
+                        status("VFXMENU OFF", 100);
+                    }
+                }
+
+                if (mc == 0x49) { // PgUp: open the HUD visor
+                    openhuddelta = -5;
+                    hud_closed   = 0;
+                }
+
+                if (mc == 0x51) { // PgDn: close it
+                    openhuddelta = +5;
+                }
+
+                if (mc == 0x3D) { // F3: moviemaker
+                    if (moviestat == 0) {
+                        moviestat            = 1;
+                        graphics_menu_status = 0;
+
+                        if (movieexists == 0) {
+                            movieexists = movie_deck_exists(moviedeck);
+                        }
+
+                        movie_deck_status();
+                    } else {
+                        moviestat = 0;
+                        status("MVMENU OFF", 100);
+                    }
+                }
+
+                if (((mc == 144 && moviedeck < 999) || (mc == 142 && moviedeck > 1)) &&
+                    moviestat && !movie) {
+                    moviedeck += mc == 144 ? 1 : -1;
+                    movieexists = movie_deck_exists(moviedeck);
+                    movie_deck_status();
+                    movienr = 0;
+                }
+
             goesk_e_reentry:
 
                 if (targets_in_range) {
@@ -4938,12 +5150,88 @@ resynctoplanet:
                 if (mc == 72) {
                     lifter = -100;
                 }
+
+                if (mc == 80) { // Down: space mouselook mode
+                    if (option_mouseLook == 0) {
+                        option_mouseLook = 1;
+                        status("MOUSELOOK ON", 50);
+                    } else if (option_mouseLook == 1) {
+                        option_mouseLook = 2;
+                        status("INV. Y AXIS", 50);
+                    } else {
+                        option_mouseLook = 0;
+                        status("MOUSELOOK OFF", 50);
+                    }
+                }
             } else {
             goesk_a_reentry:
 
-                if (mc == '*') {
+                if (mc == '*' || (mc == 'm' && !(labstar || labplanet))) {
                     snapshot(0, 1);
                     goto endmain;
+                }
+
+                if (mc == 'b') {
+                    if (graphics_menu_status == 1) {
+                        seamless_border = !seamless_border;
+                        status(seamless_border ? "SEAMLESS BD." : "DEFAULT BD.", 100);
+                    } else if (!(labstar || labplanet)) {
+                        snapshot(0, 0);
+                        goto endmain;
+                    }
+                }
+
+                if ((mc == '+' && moviefsec < 999) || (mc == '-' && moviefsec > 1)) {
+                    if (moviestat && !movie) {
+                        char short_text[16];
+                        moviefsec += mc == '+' ? 1 : -1;
+                        snprintf(short_text, sizeof(short_text), "CAPT %d FR",
+                                 (int) moviefsec);
+                        status(short_text, 100);
+                    }
+                }
+
+                if (mc == 13 && !ip_targetting && !labstar && !labplanet &&
+                    !targets_in_range && !manual_target) {
+                    int8_t r = movie_record_toggle();
+
+                    if (r == 1) {
+                        status("RECORDING", 50);
+                    } else if (r == 2) {
+                        status("STOP REC", 50);
+                    }
+                }
+
+                if (mc == 'f') {
+                    if (graphics_menu_status == 1) {
+                        if (lens_flare_mode == 0) {
+                            lens_flare_mode = 1;
+                            status("FLARES ON", 100);
+                        } else if (lens_flare_mode == 1) {
+                            lens_flare_mode = -1;
+                            status("FLARES OFF", 100);
+                        } else {
+                            lens_flare_mode = 0;
+                            status("VISOR FLARES", 100);
+                        }
+                    } else if (moviestat && !movie) {
+                        movieflashoff = !movieflashoff;
+                        status(movieflashoff ? "NO FLASH" : "BLK FLASH", 100);
+                    }
+                }
+
+                if (mc == 's' && !(labstar || labplanet)) {
+                    roofspeed = !roofspeed;
+                    status(roofspeed ? "ROOFSPEED" : "NO ROOFSPD", 50);
+                }
+
+                if (mc == 't' && graphics_menu_status == 1) {
+                    draw_hud = !draw_hud;
+                    status(draw_hud ? "TEXT ON" : "TEXT OFF", 100);
+                }
+
+                if (mc == 'p' && !(labstar || labplanet)) {
+                    movie_pause_toggle();
                 }
 
                 if (data) {
@@ -5266,7 +5554,7 @@ resynctoplanet:
                         dev_page = 0;
                         break;
 
-                    case 'p':
+                    case 'd':
                         sys      = 3;
                         dev_page = 0;
                         break;
@@ -5300,11 +5588,11 @@ resynctoplanet:
                     }
                 }
 
-                if (mc == '+' && surlight < 63) {
+                if (mc == '+' && surlight < 63 && !moviestat) {
                     surlight++;
                 }
 
-                if (mc == '-' && surlight > 10) {
+                if (mc == '-' && surlight > 10 && !moviestat) {
                     surlight--;
                 }
             }
@@ -5315,4 +5603,40 @@ resynctoplanet:
     } else {
         mc = 0;
     }
+}
+
+// Plus: F1 help & about page.
+void ShowAboutPage(int8_t surface) {
+    area_clear(adapted, 5, 5, 315, 195, 0, 0, 0);
+    area_clear(adapted, 11, 10, 310, 32, 0, 0, 80);
+    wrouthud(14, 12, 0, "                               NOCTIS IV PLUS");
+    wrouthud(14, 19, 0, "                      BY MEGA, NEUZD, SL, AND OTHERS");
+    wrouthud(14, 26, 0, "     MODIFIED VERSION OF NOCTIS - A PROGRAM MADE BY ALESSANDRO GHIGNOLA.");
+    area_clear(adapted, 11, 35, 310, 44, 0, 0, 72);
+    area_clear(adapted, 11, 45, 310, 168, 0, 0, 112);
+
+    if (surface) {
+        wrouthud(14, 37, 0, "SHORTCUT KEYS (WHEN ON THE SURFACE):");
+        wrouthud(14, 53, 0, "0-9 - MOVEMENT SPEED                      LEFT CLICK - WALK FORWARD");
+        wrouthud(14, 59, 0, "J - JUMP                                  L - LAND ON SURFACE");
+        wrouthud(14, 65, 0, "SPACE - JETPACK                           C - DISENGAGE JETPACK CONTROL");
+        wrouthud(14, 71, 0, "M OR ASTERISK - SNAPSHOT                  N OR / - WIDE SNAPSHOT");
+        wrouthud(14, 77, 0, "B OR DELETE - RAW SNAPSHOT                V OR PERIOD - RAW WIDE SNAPSHOT");
+        wrouthud(14, 83, 0, "F3 - MOVIEMAKER                           F2 - VISUAL EFFECTS SETTINGS");
+        wrouthud(14, 89, 0, "DOWN ARROW - TOGGLE MOUSELOOK             PLUS AND MINUS - HUD BRIGHTNESS");
+    } else {
+        wrouthud(14, 37, 0, "SHORTCUT KEYS (WHEN IN SPACE):");
+        wrouthud(14, 53, 0, "M OR ASTERISK - SNAPSHOT                  B - RAW SNAPSHOT");
+        wrouthud(14, 59, 0, "F3 - MOVIEMAKER                           F2 - VISUAL EFFECTS SETTINGS");
+        wrouthud(14, 65, 0, "S - TOGGLE ROOFSPEED                      UP ARROW - EXIT TO ROOF");
+        wrouthud(14, 71, 0, "DOWN ARROW - TOGGLE MOUSELOOK             PLUS AND MINUS - HUD BRIGHTNESS");
+    }
+
+    area_clear(adapted, 11, 178, 310, 188, 0, 0, 72);
+
+    if (charge < 0) {
+        wrouthud(14, 160, 0, "           THIS STARDRIFTER IS EQUIPPED WITH THE OMEGA DRIVE       ");
+    }
+
+    wrouthud(14, 180, 0, "RELEASE 2.3 - SDL2 PORT BASED ON NOCTIS IV LR");
 }

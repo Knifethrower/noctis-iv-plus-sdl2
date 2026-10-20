@@ -2137,6 +2137,13 @@ char *alphavalue(double value) {
     return (dec);
 }
 
+// Plus: triad dexter/medius/sinister padded with zeros.
+char *formatTriad(double value) {
+    static char triadFormat[10];
+    snprintf(triadFormat, sizeof(triadFormat), "%03d", (int) value);
+    return triadFormat;
+}
+
 // Draws the background, with the map offsets.map.
 void background(uint16_t start, uint8_t *target, uint8_t *background,
                 uint8_t *offsetsmap, uint16_t total_map_bytes,
@@ -2870,6 +2877,8 @@ void lens_flares_for(double cam_x, double cam_y, double cam_z, double xlight,
                      int16_t xshift, int16_t yshift) {
     double k = 10 / interval, l = 1, u = 1.5;
     double xx, yy, zz, z2, rx, ry, rz;
+    // Plus: flares on the visor only, always, or never.
+    int8_t on_hud_forced = (on_hud == 1 && lens_flare_mode == 0) || lens_flare_mode == 1;
     int32_t xs, ys, dx, dy;
     float xr, yr;
     uint8_t temp;
@@ -2921,7 +2930,7 @@ void lens_flares_for(double cam_x, double cam_y, double cam_z, double xlight,
                 dy = (int32_t)(lft_sin[c] * k * l);
                 fline(xs - dx, ys - dy, xs + dx, ys + dy);
 
-                if (on_hud && !(c % 8)) {
+                if (on_hud_forced && !(c % 8)) {
                     dx /= 10;
                     dy /= 10;
                     xr = (float) xs * -0.1;
@@ -5359,9 +5368,13 @@ void collect_targets() {
 
 /* Cambia lo stato visualizzato dall'FCS sull'Head-Up-Display. */
 
+// Plus: the visor shows up to 10 characters, the surface HUD the full text.
+char fcs_status_extended[42] = "STANDBY";
+
 void status(const char *status_description, int16_t message_delay) {
     if (message_delay >= fcs_status_delay) {
-        strcpy((char *) fcs_status, status_description);
+        snprintf((char *) fcs_status, 11, "%s", status_description);
+        snprintf(fcs_status_extended, 42, "%s", status_description);
         fcs_status_delay = message_delay;
     }
 }
@@ -5477,7 +5490,7 @@ void cupola(float y_or, float brk) {
             lat = (M_PI / 20) * 8 * ((float) gburst / 63);
             lens_flares_for(cam_x, cam_y, cam_z, +cupsize * clon * sin(lat),
                             -cupheight * cos(lat), +cupsize * slon * sin(lat),
-                            -50000, 10, 1, 0, 1, 1);
+                            -50000, 10, hud_closed, 0, 1, 1);
             flares = 0;
         }
     }
@@ -5660,10 +5673,18 @@ float tp_temp = 22, pp_temp = 22;
 float tp_pressure = 1, pp_pressure = 1;
 float tp_pulse = 118, pp_pulse = 118;
 
+// Plus: set while a snapshot is taken, so labels show with the HUD text off.
+static int8_t taking_snapshot = 0;
+
 void wrouthud(uint16_t x, uint16_t y, uint16_t l, const char *text) {
     int16_t j, i, n;
     uint16_t spot;
     n = 0;
+
+    if (draw_hud == 0 && about == 0 && taking_snapshot == 0 && moviestat == 0 &&
+        graphics_menu_status == 0) {
+        return;
+    }
 
     if (!l) {
         l = 32767;
@@ -5696,14 +5717,22 @@ void wrouthud(uint16_t x, uint16_t y, uint16_t l, const char *text) {
     }
 }
 
+// Plus: corner lights that blink while the jetpack fires.
+int8_t blinkhudlights       = 0;
+int8_t blinkhudlights_stay  = 0;
+static int8_t blinkhudlights_flash = 0;
+static int16_t blnr         = 0;
+
 void surrounding(int8_t compass_on, int16_t openhudcount) {
     int16_t cpos, crem;
     int32_t lsecs, lptr;
     float pp_delta, ccom;
 
-    for (lptr = 0; lptr < 04; lptr++) {
-        area_clear(adapted, 10, openhudcount + 9 - lptr, 0, 0, 300, 1,
-                   54 + surlight + 3 * lptr);
+    if (draw_hud == 1) {
+        for (lptr = 0; lptr < 04; lptr++) {
+            area_clear(adapted, 10, openhudcount + 9 - lptr, 0, 0, 300, 1,
+                       54 + surlight + 3 * lptr);
+        }
     }
 
     for (lptr = 0; lptr < 10; lptr++) {
@@ -5714,12 +5743,25 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
         area_clear(adapted, 0, 190 + lptr, 0, 0, 320, 1, 64 + surlight - lptr);
     }
 
-    for (lptr = 0; lptr < 10; lptr++) {
-        area_clear(adapted, 9 - lptr, 10, 0, 0, 1, 180, 64 + surlight - lptr);
-    }
+    if (seamless_border == 1) {
+        for (lptr = 0; lptr < 10; lptr++) {
+            area_clear(adapted, 9 - lptr, 10 - (lptr + 1), 0, 0, 1,
+                       180 + 20 - ((9 - lptr) * 2), 64 + surlight - lptr);
+        }
 
-    for (lptr = 0; lptr < 10; lptr++) {
-        area_clear(adapted, 310 + lptr, 10, 0, 0, 1, 180, 64 + surlight - lptr);
+        for (lptr = 0; lptr < 10; lptr++) {
+            area_clear(adapted, 310 + lptr, 10 - (lptr + 1), 0, 0, 1,
+                       180 + 20 - ((9 - lptr) * 2), 64 + surlight - lptr);
+        }
+    } else {
+        for (lptr = 0; lptr < 10; lptr++) {
+            area_clear(adapted, 9 - lptr, 10, 0, 0, 1, 180, 64 + surlight - lptr);
+        }
+
+        for (lptr = 0; lptr < 10; lptr++) {
+            area_clear(adapted, 310 + lptr, 10, 0, 0, 1, 180,
+                       64 + surlight - lptr);
+        }
     }
 
     lptr = 64 + 3 * surlight;
@@ -5728,40 +5770,62 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
         lptr = 127;
     }
 
-    area_clear(adapted, 9, 9, 0, 0, 4, 4, lptr);
-    smootharound_64(adapted, 9, 9, 5, 1);
-    area_clear(adapted, 308, 9, 0, 0, 4, 4, lptr);
-    smootharound_64(adapted, 308, 9, 5, 1);
-    area_clear(adapted, 9, 188, 0, 0, 4, 4, lptr);
-    smootharound_64(adapted, 9, 188, 5, 1);
-    area_clear(adapted, 308, 188, 0, 0, 4, 4, lptr);
-    smootharound_64(adapted, 308, 188, 5, 1);
+    if (draw_hud == 1) {
+        bool big = false;
+
+        if (blinkhudlights == 1) {
+            lptr = lptr <= 111 ? 127 : 96;
+
+            if (blinkhudlights_stay == 0) {
+                blinkhudlights = 0;
+            }
+
+            if (++blnr >= 10) {
+                blinkhudlights_flash = !blinkhudlights_flash;
+                blnr = 0;
+            }
+
+            big = blinkhudlights_stay == 0 || blinkhudlights_flash == 1;
+        }
+
+        if (big) {
+            area_clear(adapted, 9, 9, 0, 0, 5, 5, lptr);
+            smootharound_64(adapted, 9, 9, 5, 1);
+            area_clear(adapted, 307, 9, 0, 0, 5, 5, lptr);
+            smootharound_64(adapted, 308, 9, 5, 1);
+            area_clear(adapted, 9, 187, 0, 0, 5, 5, lptr);
+            smootharound_64(adapted, 9, 188, 5, 1);
+            area_clear(adapted, 307, 187, 0, 0, 5, 5, lptr);
+            smootharound_64(adapted, 308, 188, 5, 1);
+        } else {
+            area_clear(adapted, 9, 9, 0, 0, 4, 4, lptr);
+            smootharound_64(adapted, 9, 9, 5, 1);
+            area_clear(adapted, 308, 9, 0, 0, 4, 4, lptr);
+            smootharound_64(adapted, 308, 9, 5, 1);
+            area_clear(adapted, 9, 188, 0, 0, 4, 4, lptr);
+            smootharound_64(adapted, 9, 188, 5, 1);
+            area_clear(adapted, 308, 188, 0, 0, 4, 4, lptr);
+            smootharound_64(adapted, 308, 188, 5, 1);
+        }
+    }
+
     // Print time on outer HUD.
     sprintf((char *) outhudbuffer, "EPOC %d & ", epoc);
-
-    auto sinisters = (uint16_t)(fmod(secs, 1e9) / 1e6);
-    // Pad with a 0.
-    if (sinisters < 100) {
-        strcat((char *) outhudbuffer, "0");
-    }
-    snprintf(dec, 4, "%hu", sinisters);
-    strcat((char*) outhudbuffer, dec);
+    lsecs = (int32_t) secs;
+    lsecs -= lsecs % 1000000L;
+    lsecs /= 1000000L;
+    lsecs %= 1000;
+    strcat((char *) outhudbuffer, formatTriad(lsecs));
     strcat((char *) outhudbuffer, ".");
-
-    auto medii = (uint16_t)(fmod(secs, 1e6) / 1e3);
-    if (medii < 100) {
-        strcat((char *) outhudbuffer, "0");
-    }
-    snprintf(dec, 4, "%hu", medii);
-    strcat((char *) outhudbuffer, dec);
+    lsecs = (int32_t) secs;
+    lsecs %= 1000000L;
+    lsecs -= lsecs % 1000;
+    lsecs /= 1000;
+    strcat((char *) outhudbuffer, formatTriad(lsecs));
     strcat((char *) outhudbuffer, ".");
-
-    auto dexters = (uint16_t)(fmod(secs, 1e3));
-    if (dexters < 100) {
-        strcat((char *) outhudbuffer, "0");
-    }
-    snprintf(dec, 4, "%hu", dexters);
-    strcat((char *) outhudbuffer, dec);
+    lsecs = (int32_t) secs;
+    lsecs %= 1000;
+    strcat((char *) outhudbuffer, formatTriad(lsecs));
 
     if (compass_on) {
         strcat((char *) outhudbuffer, " & SQC ");
@@ -5792,7 +5856,7 @@ void surrounding(int8_t compass_on, int16_t openhudcount) {
             if (sys == 4) {
                 strcat(
                     (char *) outhudbuffer,
-                    "(5\\FLIGHTCTR R\\DEVICES    P\\PREFS      X\\SCREEN OFF)");
+                    "5\\FLIGHTCTR R\\DEVICES    D\\PREFS      X\\SCREEN OFF");
             } else {
                 cpos                    = strlen((char *) outhudbuffer);
                 outhudbuffer[cpos + 00] = '6';
@@ -5842,44 +5906,114 @@ extern int8_t star_label[25];
 extern int32_t planet_label_pos;
 extern int8_t planet_label[25];
 
-int8_t snapfilename[24];
-/* Save a photo of the screen into the file "SNAP[XXXX].BMP", where [XXXX] is a
- * progressive disambiguation number.
+int8_t snapfilename[32];
+
+// Plus moviemaker: every Nth frame goes to movies/<deck>/<frame>.BMP.
+int8_t movie         = 0;
+int8_t movieflashoff = 1;
+int32_t movienr      = 0;
+int32_t moviefscap   = 0;
+int32_t moviestime   = 0;
+int32_t moviedeck    = 1;
+int32_t movieexists  = 0;
+float moviefps       = 0;
+int32_t lastSnapshot = -1;
+int8_t option_mouseLook = 0;
+
+// 2 when the deck already holds a recording, else 1.
+int32_t movie_deck_exists(int32_t deck) {
+    char name[32];
+    snprintf(name, sizeof(name), "movies/%03d/00000001.BMP", (int) deck);
+    FILE *f = fopen(name, "rb");
+    if (f) {
+        fclose(f);
+        return 2;
+    }
+    return 1;
+}
+
+/* Save a photo of the screen into gallery/[XXXXXXXX].BMP (Plus numbering),
+ * a moviemaker frame, or a part of a wide snapshot (forcenumber).
  */
 void snapshot(int16_t forcenumber, int8_t showdata) {
-    int16_t prog;
-    uint16_t pqw;
+    int32_t prog;
     double parsis_x, parsis_y, parsis_z;
     uint16_t ptr, c;
     int8_t a, b, t[54];
+
+    taking_snapshot = 1;
+
     FILE* ih = sa_open(header_bmp);
 
     if (ih == nullptr) {
+        taking_snapshot = 0;
         return;
     }
 
     fread(t, 1, 54, ih);
     fclose(ih);
 
+    // The DOS version blanked the screen as a flash; recording without flash
+    // marks the bottom line instead.
+    if (movie == 0 || (movieflashoff == 0 && movie == 1)) {
+        screen_flash(-1);
+    }
+
+    if (movie == 1) {
+        if (movieexists == 1) {
+            mkdir("movies", 0755);
+            sprintf((char *) snapfilename, "movies/%03d", (int) moviedeck);
+            mkdir((char *) snapfilename, 0755);
+        }
+
+        if (movieflashoff == 1) {
+            screen_flash(surlight <= 38 ? 127 : 1);
+        }
+
+        moviefscap++;
+    }
+
     if (!forcenumber) {
-        prog = -1;
+        prog = lastSnapshot;
+        int8_t recycled = 0;
+        mkdir("gallery", 0755);
 
         do {
-            prog++;
+            if (!movie) {
+                prog++;
 
-            if (prog == 9999) {
-                return;
+                if (prog == 100000000) {
+                    if (recycled) {
+                        status("TOO MANY SNAPSHOTS", 300);
+                        taking_snapshot = 0;
+                        return;
+                    }
+
+                    recycled = 1;
+                    prog     = 0;
+                }
             }
 
-            sprintf((char *) snapfilename, "gallery/SNAP%04d.BMP", prog);
+            if (movie == 1) {
+                movienr++;
+                sprintf((char *) snapfilename, "movies/%03d/%08d.BMP", (int) moviedeck,
+                        (int) movienr);
+                remove((char *) snapfilename);
+            } else {
+                sprintf((char *) snapfilename, "gallery/%08d.BMP", (int) prog);
+            }
+
             ih = fopen((char *) snapfilename, "rb");
 
             if (ih != nullptr) {
                 fclose(ih);
             }
         } while (ih != nullptr);
+
+        lastSnapshot = prog;
     } else {
-        sprintf((char *) snapfilename, "gallery/SNAP%04d.BMP", forcenumber);
+        mkdir("gallery", 0755);
+        sprintf((char *) snapfilename, "gallery/WIDE%04d.BMP", forcenumber);
     }
 
     if (showdata) {
@@ -5912,14 +6046,17 @@ void snapshot(int16_t forcenumber, int8_t showdata) {
 
         wrouthud(3, 192, 0, (char *) outhudbuffer);
 
+        // Labels go to the top corner when the HUD text is off.
+        int16_t lx = draw_hud == 1 ? 14 : 2, ly = draw_hud == 1 ? 14 : 2;
+
         if (ap_targetted == 1 && star_label_pos != -1) {
-            area_clear(adapted, 14, 14, 0, 0, 102, 7, 64 + 63);
-            wrouthud(15, 15, 20, (char *) star_label);
+            area_clear(adapted, lx, ly, 0, 0, 102, 7, 64 + 63);
+            wrouthud(lx + 1, ly + 1, 20, (char *) star_label);
         }
 
         if (ip_targetted != -1 && planet_label_pos != -1) {
-            area_clear(adapted, 14, 23, 0, 0, 102, 7, 64 + 63);
-            wrouthud(15, 24, 20, (char *) planet_label);
+            area_clear(adapted, lx, ly + 9, 0, 0, 102, 7, 64 + 63);
+            wrouthud(lx + 1, ly + 10, 20, (char *) planet_label);
         }
     }
 
@@ -5945,6 +6082,8 @@ void snapshot(int16_t forcenumber, int8_t showdata) {
 
         fclose(ih);
     }
+
+    taking_snapshot = 0;
 }
 
 /*
@@ -6018,10 +6157,13 @@ void additional_consumes() {
 
     //
     if (pwr <= 15000) {
-        if (charge) {
+        if (charge > 0) {
             charge--;
             pwr = 20000;
             status("FCS: READY", 100);
+        } else if (charge < 0) { // Plus: negative charge = Omega Drive.
+            pwr = 20000;
+            status("OMEGA", 100);
         } else {
             stspeed      = 0;
             ip_reaching  = 0;
@@ -6032,6 +6174,132 @@ void additional_consumes() {
                 status("POWER LOSS", 100);
                 pwr = 15000;
             }
+        }
+    }
+}
+
+// Plus moviemaker: frames per second of the current recording.
+void CalculatemovieFPS(int32_t moviefscap, int32_t moviestime) {
+    float moviesecs = ((float) gtime - (float) moviestime) / 18;
+
+    if (moviesecs != 0) {
+        moviefps = (float) moviefscap / moviesecs;
+    }
+}
+
+// Plus moviemaker panel (F3).
+void ShowMovieSetup(int32_t moviefsec, int8_t movieflashoff, int32_t moviedeck) {
+    if (movieexists == 0) {
+        movieexists = movie_deck_exists(moviedeck);
+    }
+
+    area_clear(adapted, 13, 131, 175, 180, 0, 0, 72);
+    area_clear(adapted, 13, 138, 175, 139, 0, 0, 90);
+
+    sprintf((char *) outhudbuffer, "MOVIEDECK %3d                 (CTRL +/-)",
+            (int) moviedeck);
+    wrouthud(14, 141, 0, (char *) outhudbuffer);
+
+    sprintf((char *) outhudbuffer, "CAPTURE EVERY %3d FRAMES           (+/-)",
+            (int) moviefsec);
+    wrouthud(14, 148, 0, (char *) outhudbuffer);
+
+    if (movieflashoff == 1) {
+        wrouthud(14, 155, 0, "NO FLASH WHEN SCREENCAPTURE          (F)");
+    } else {
+        wrouthud(14, 155, 0, "BLACK FLASH WHEN SCREENCAPTURE       (F)");
+    }
+
+    if ((moviefsec == 1 && movieflashoff == 0) || movieexists == 2) {
+        area_clear(adapted, 14, 161, 174, 168, 0, 0, 85);
+        wrouthud(15, 162, 0, "WARNING:");
+    }
+
+    if (moviefsec == 1 && movieflashoff == 0) {
+        wrouthud(51, 162, 0, "BLACK SCREEN!");
+    }
+
+    if (movieexists == 2) {
+        wrouthud(106, 162, 0, "MOVIEDECK EXISTS!");
+    }
+
+    if (!movie) {
+        wrouthud(14, 169, 0, "START RECORDING                  (ENTER)");
+    } else {
+        area_clear(adapted, 15, 132, 130, 137, 0, 0, 82);
+        wrouthud(14, 169, 0, "STOP RECORDING                   (ENTER)");
+        area_clear(adapted, 131, 131, 132, 138, 0, 0, 90);
+        sprintf((char *) outhudbuffer, "FPS: %2.2f", moviefps);
+        wrouthud(133, 132, 0, (char *) outhudbuffer);
+    }
+
+    wrouthud(14, 132, 0, "  NOCTIS IV+ MOVIEMAKER");
+}
+
+// Plus: fits the number in outhudbuffer into columns min..max (right-aligned,
+// decimals cut, "E<n>" when the integer part is too long).
+void FitOutHudBuffer(int32_t min, int32_t max) {
+    char *b = (char *) outhudbuffer;
+    int32_t len = strlen(b);
+    int32_t a;
+
+    auto move_forward = [&]() {
+        int32_t move = max - len;
+
+        for (a = len; a >= min; a--) {
+            b[a + move] = b[a];
+            b[a]        = ' ';
+        }
+
+        for (a = len + 1; a < max - len; a++) {
+            b[a] = ' ';
+        }
+    };
+
+    auto trim = [&]() {
+        int32_t missingdigits = a - (max - 2);
+        int32_t writeEAt      = max - 2;
+
+        // The original looped forever here; stop at the field edge instead.
+        while (missingdigits > 9 && writeEAt >= min) {
+            missingdigits++;
+            writeEAt--;
+        }
+
+        if (writeEAt < min) {
+            sprintf(b + min, " !!!!!!");
+        } else {
+            sprintf(b + writeEAt, "E%i", (int) missingdigits);
+        }
+
+        b[max] = 0;
+    };
+
+    if (len < max) {
+        move_forward();
+    } else if (len > max) {
+        for (a = len - 1; a >= min; a--) {
+            if (b[a] == '.') {
+                if (a == max - 1) {
+                    b[max] = 0;
+                    len    = max - 1;
+                    move_forward();
+                    return;
+                }
+
+                if (a >= max) {
+                    trim();
+                } else {
+                    b[max] = 0;
+                }
+
+                break;
+            }
+        }
+
+        if (a == min - 1) {
+            a = len;
+            trim();
         }
     }
 }

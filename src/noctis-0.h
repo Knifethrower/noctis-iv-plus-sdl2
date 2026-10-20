@@ -247,7 +247,7 @@ extern void shade(uint8_t *palette_buffer, int16_t first_color,
                   int16_t number_of_colors, float start_r, float start_g,
                   float start_b, float finish_r, float finish_g,
                   float finish_b);
-extern int8_t snapfilename[24];
+extern int8_t snapfilename[32];
 extern void snapshot(int16_t forcenumber, int8_t showdata);
 extern void from_vehicle();
 extern void from_user();
