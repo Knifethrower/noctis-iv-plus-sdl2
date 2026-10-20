@@ -1,21 +1,17 @@
+# Build output
+build/
+cmake-build-debug/
 
-# Build Files
-# CLion Files
-# Manual Build Dir
-# Save Data
-# Screenshot Directory
+# IDE files
+.idea/
 *.iml
 *.ipr
 *.iws
-.idea/
-build/
-build/
-cmake-build-debug/
-data/GOESfile.txt
-data/comm.bin
-data/current.bin
+
+# Saves, snapshots and movies
 data/current.bin
 data/surface.bin
-gallery/
+data/comm.bin
+data/GOESfile.txt
 gallery/
 movies/
