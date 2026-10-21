@@ -6,6 +6,7 @@
 #include "brtl.h"
 #include "noctis-0.h"
 #include "noctis-d.h"
+#include "goesnet/goesnet.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -510,120 +511,80 @@ void freeze() {
     fclose(fh);
 }
 
-/* Get the Noctis executable's relative path
- * 	and strip the name to leave only the directory.
- */
-char *argv0;
-char *get_exe_dir() {
-    char *directory;
-
-    directory = (char *) malloc(strlen(argv0) + 1);
-    strcpy(directory, argv0);
-
-    /* Effectively cuts off the "nivlr"
-     * 	part of the path */
-    *(strrchr(directory, '/') + 1) = '\0';
-
-    return directory;
-}
-
-// Execution of an executable module of the GOES Net.
+// Execution of a module of the GOES Net (src/goesnet: built into the game).
 void run_goesnet_module() {
     FILE *ch;
-
-    /* Allows for prepending './' to the command,
-     * 	so that a bash shell can run the proper module file.
-     * TODO: Find a better solution that doesn't involve
-     * 	this wasteful malloc call. */
-    char *command_prepended = (char *) malloc(200);
-
-    /* Reading the path to the Noctis binary */
-    char *dir = get_exe_dir();
 
     // Save the situation because some modules need it.
     freeze();
 
     // Check resident commands.
     if (memcmp(goesnet_command, "CLR", 3) != 0) {
-        ch = fopen(goesoutputfile, "wb");
-
-        if (ch != nullptr) {
-            fwrite("(UNKNOWN MODULE)", 1, 16, ch);
-            fclose(ch);
-        }
-
-        /* Delete the last character (which is the '_' cursor) from the command
-         * line, then add the redirection to the "goesfile.txt" file.
-         */
+        // Delete the last character (which is the '_' cursor).
         goesnet_command[gnc_pos] = 0;
-        strcat(goesnet_command, " >");
-        strcat(goesnet_command, goesoutputfile);
-        // strcpy(command_prepended, (char*)".");
-        strcpy(command_prepended, dir);
-        strcat(command_prepended, goesnet_command);
-        system(command_prepended);
+
+        if (!goesnet_run(goesnet_command, goesoutputfile)) {
+            ch = fopen(goesoutputfile, "wb");
+
+            if (ch != nullptr) {
+                fwrite("(UNKNOWN MODULE)", 1, 16, ch);
+                fclose(ch);
+            }
+        }
     } else {
         remove(goesoutputfile);
     }
 
-    // Free space allocated for command.
-    free(command_prepended);
+    // It reacts to the presence of data in the communication file.
+    ch = fopen(comm, "rb");
 
-    /* Free space allocated for exe path */
-    free(dir);
+    if (ch != nullptr) {
+        fseek(ch, 0, SEEK_END);
+        long len = ftell(ch);
+        fseek(ch, 0, SEEK_SET);
 
-    if (!adapted) {
-        printf("Sorry, GOES Net crashed.\n");
-        printf("System integrity compromised: any key to quit.\n\n");
-        get_key();
-        exit(0xFF);
-    } else {
-        // It reacts to the presence of data in the communication file.
-        ch = fopen(comm, "wb");
+        if (len == 2) { // a planet of this system: fine approach
+            if (ap_reached) {
+                if (pwr > 15000) {
+                    int16_t planet;
 
-        if (ch != nullptr) {
-            uint32_t len = fseek(ch, 0, SEEK_END);
-            fseek(ch, 0, SEEK_SET);
-            if (len == 2) {
-                if (ap_reached) {
-                    if (pwr > 15000) {
-                        if (fread(&ip_targetted, 1, 2, ch) == 2) {
-                            ip_targetted--;
-                            fix_local_target();
-                            ip_targetting = 0;
-                            ip_reached    = 0;
-                            ip_reaching   = 1; // Automatic start
-                        }
-                    }
-                } else {
-                    status("NEED RECAL", 75);
-                }
-            }
-
-            if (len == 24) {
-                fread(&ap_target_x, 1, 8, ch);
-                fread(&ap_target_y, 1, 8, ch);
-
-                if (fread(&ap_target_z, 1, 8, ch) == 8) {
-                    ap_targetting = 0;
-                    extract_ap_target_infos();
-                    fix_remote_target();
-
-                    if (lithium_collector || manual_target) {
-                        status("CONFLICT", 50);
-                    } else {
-                        if (pwr > 15000) {
-                            stspeed      = 1; // Automatic start
-                            nsnp         = 1;
-                            ip_reached   = 0;
-                            ip_targetted = -1;
-                        }
+                    if (fread(&planet, 1, 2, ch) == 2) {
+                        ip_targetted = planet - 1;
+                        fix_local_target();
+                        ip_targetting = 0;
+                        ip_reached    = 0;
+                        ip_reaching   = 1; // Automatic start
                     }
                 }
+            } else {
+                status("NEED RECAL", 75);
             }
-            fclose(ch);
-            remove(comm);
         }
+
+        if (len == 24) { // a star: vimana flight
+            fread(&ap_target_x, 1, 8, ch);
+            fread(&ap_target_y, 1, 8, ch);
+
+            if (fread(&ap_target_z, 1, 8, ch) == 8) {
+                ap_targetting = 0;
+                extract_ap_target_infos();
+                fix_remote_target();
+
+                if (lithium_collector || manual_target) {
+                    status("CONFLICT", 50);
+                } else {
+                    if (pwr > 15000) {
+                        stspeed      = 1; // Automatic start
+                        nsnp         = 1;
+                        ip_reached   = 0;
+                        ip_targetted = -1;
+                    }
+                }
+            }
+        }
+
+        fclose(ch);
+        remove(comm);
     }
 
     force_update = 1;
@@ -2691,7 +2652,6 @@ int main(int argc, char **argv) {
     txtr         = (uint8_t *) p_background;             // txtr alias
     digimap2     = (uint32_t *) &n_globes_map[gl_bytes]; // font alias
 
-    argv0 = argv[0];
 
     if (pvfile && adapted && n_offsets_map && n_globes_map && p_background &&
         s_background && p_surfacemap && objectschart && lens_flares_init()) {
@@ -2714,6 +2674,12 @@ int main(int argc, char **argv) {
     }
 
     unfreeze();
+
+    // Test mode: NOCTIS_GOES="<command>" runs one GOES Net module on this save
+    // and quits, its output and COMM.BIN left in data/ (as the DOS module left them).
+    if (const char *cmd = getenv("NOCTIS_GOES")) {
+        exit(goesnet_run(cmd, goesoutputfile) ? 0 : 2);
+    }
     QUADWORDS = SW * SH / 4;
     memset(adapted, 0, QUADWORDS * 4);
     QUADWORDS -= SW * 18 / 4;

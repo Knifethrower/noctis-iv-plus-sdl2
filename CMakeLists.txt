@@ -6,6 +6,11 @@ find_package(SDL2 REQUIRED)
 
 set(SOURCE_FILES src/noctis.cpp src/noctis-1.cpp src/noctis-0.cpp src/brtl.cpp src/platform.cpp)
 
+# GOES Net modules: the original DOS sources, built in (src/goesnet/goesdos.h).
+file(GLOB GOESNET_FILES src/goesnet/*.cpp)
+set_source_files_properties(${GOESNET_FILES} PROPERTIES COMPILE_OPTIONS "-Wno-write-strings")
+list(APPEND SOURCE_FILES ${GOESNET_FILES})
+
 # sin, cos, atan, pow from musl: the same results on every CPU and C library.
 set(DETMATH_FILES sin.c cos.c __sin.c __cos.c __rem_pio2.c __rem_pio2_large.c atan.c pow.c
     pow_data.c exp_data.c __math_oflow.c __math_uflow.c __math_xflow.c __math_invalid.c
