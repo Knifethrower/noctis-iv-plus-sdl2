@@ -310,14 +310,14 @@ void cline(int16_t line, const char *text) {
     line *= 128;
     // The non-control section starts 20 characters into the line.
     uint16_t start = line + 20;
-    strcpy(&ctb[start], text);
+    memcpy(&ctb[start], text, strlen(text)); // no terminator, as the original
     // The current index, used for the other() function.
     point = start + strlen(text);
 }
 
 // Write text following what was just written with cline().
 void other(const char *text) {
-    strcpy(&ctb[point], text);
+    memcpy(&ctb[point], text, strlen(text));
     // Increment the current character index by the length of what was just
     // added.
     point += strlen(text);
@@ -327,20 +327,24 @@ void other(const char *text) {
 void control(int16_t line, const char *text) {
     // Multiply the line index by 128 b/c there are 128 characters per line.
     uint16_t start = line * 128;
-    strcpy(&ctb[start], text);
+    memcpy(&ctb[start], text, strlen(text)); // no terminator, as the original
 }
 
 // Writes the title of a command on the main display.
 // These are split up into 4 blocks of 27 characters.
 void command(int16_t nr, const char *text) {
-    uint16_t length = strlen(text);
+    // As the original: at most 27 characters, the rest of the block blanked
+    // (a shorter title over a longer one left its end showing).
+    char *block = &ctb[20 + 27 * nr];
+    int16_t i   = 0;
 
-    if (length > 27) {
-        return;
+    for (; i < 27 && text[i]; i++) {
+        block[i] = text[i];
     }
 
-    int16_t index = 20 + 27 * nr;
-    strcpy(&ctb[index], text);
+    for (; i < 27; i++) {
+        block[i] = ' ';
+    }
 }
 
 // Clear the whole on-board computer screen.
