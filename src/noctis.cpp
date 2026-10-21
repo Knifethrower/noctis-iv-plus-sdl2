@@ -511,6 +511,26 @@ void freeze() {
     fclose(fh);
 }
 
+// The modules' VGA screen: the middle 320 columns of the game's frame.
+void goesnet_load_vga(unsigned char *vga) {
+    for (int32_t y = 0; y < SH; y++) {
+        memcpy(vga + y * 320, adapted + y * SW + (SW - 320) / 2, 320);
+    }
+}
+
+void goesnet_show_vga(const unsigned char *vga) {
+    static uint8_t frame[SW_MAX * SH];
+    memcpy(frame, adapted, SW * SH);
+    for (int32_t y = 0; y < SH; y++) {
+        memcpy(frame + y * SW + (SW - 320) / 2, vga + y * 320, 320);
+    }
+    plat_present(frame, currpal);
+}
+
+// Port: the last 16 GOES Net commands, for Up/Down on the terminal.
+static char goes_history[16][120];
+static int32_t goes_history_first, goes_history_n, goes_history_at;
+
 // Execution of a module of the GOES Net (src/goesnet: built into the game).
 void run_goesnet_module() {
     FILE *ch;
@@ -872,6 +892,26 @@ void vehicle(float opencapcount) {
                     gnc_pos            = 0;
                     goesk_e            = -1;
                 }
+
+                // Port: Up/Down go through the last commands (no keyboard on
+                // handhelds), instead of moving the ship.
+                if ((c == 72 || c == 80) && goes_history_n) {
+                    goes_history_at += c == 72 ? -1 : 1;
+                    goes_history_at = goes_history_at < 0 ? 0 : goes_history_at;
+
+                    if (goes_history_at >= goes_history_n) {
+                        goes_history_at = goes_history_n;
+                        goesnet_command[0] = '_';
+                        goesnet_command[1] = 0;
+                        gnc_pos            = 0;
+                    } else {
+                        const char *h = goes_history[(goes_history_first + goes_history_at) % 16];
+                        snprintf(goesnet_command, sizeof(goesnet_command), "%s_", h);
+                        gnc_pos = strlen(h);
+                    }
+
+                    goesk_e = -1;
+                }
             } else {
                 if (c == 27) {
                     goesk_a = c; // Pass the keystroke
@@ -880,6 +920,17 @@ void vehicle(float opencapcount) {
                     goesnet_command[gnc_pos]     = 0;
                     gnc_pos--;
                 } else if (c == 13) {
+                    if (gnc_pos > 0) {
+                        int32_t slot = (goes_history_first + goes_history_n) % 16;
+                        snprintf(goes_history[slot], sizeof(goes_history[0]), "%.*s",
+                                 (int) gnc_pos, goesnet_command);
+                        if (goes_history_n < 16) {
+                            goes_history_n++;
+                        } else {
+                            goes_history_first = (goes_history_first + 1) % 16;
+                        }
+                    }
+                    goes_history_at = goes_history_n;
                     run_goesnet_module();
                     n = 0;
 
@@ -2677,8 +2728,19 @@ int main(int argc, char **argv) {
 
     // Test mode: NOCTIS_GOES="<command>" runs one GOES Net module on this save
     // and quits, its output and COMM.BIN left in data/ (as the DOS module left them).
+    // NOCTIS_GOES_SHIP=1: through the terminal instead, the ship acting on
+    // COMM.BIN, and the targets printed.
     if (const char *cmd = getenv("NOCTIS_GOES")) {
-        exit(goesnet_run(cmd, goesoutputfile) ? 0 : 2);
+        if (!getenv("NOCTIS_GOES_SHIP")) {
+            exit(goesnet_run(cmd, goesoutputfile) ? 0 : 2);
+        }
+        snprintf(goesnet_command, sizeof(goesnet_command), "%s_", cmd);
+        gnc_pos = strlen(cmd);
+        run_goesnet_module();
+        printf("ip_targetted %d ip_reaching %d ip_reached %d stspeed %d ap_target %.0f %.0f %.0f\n",
+               ip_targetted, ip_reaching, ip_reached, stspeed, ap_target_x, ap_target_y,
+               ap_target_z);
+        exit(0);
     }
     QUADWORDS = SW * SH / 4;
     memset(adapted, 0, QUADWORDS * 4);

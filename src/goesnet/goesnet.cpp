@@ -4,6 +4,7 @@
 
 #include "goesnet.h"
 #include "goesdos.h"
+#include "../platform.h"
 
 #include <cctype>
 #include <dirent.h>
@@ -123,6 +124,23 @@ int printf(const char *fmt, ...) {
     return n;
 }
 
+unsigned char vga[64000];
+
+void vga_show() { goesnet_show_vga(vga); }
+
+int kbhit() { return plat_key_ready(); }
+
+int getch() { return plat_get_key(); }
+
+static uint32_t rand_seed = 1;
+
+void srand(unsigned seed) { rand_seed = (uint16_t) seed; }
+
+int rand() {
+    rand_seed = rand_seed * 0x015A4E35u + 1;
+    return (rand_seed >> 16) & 0x7FFF;
+}
+
 char *strupr(char *s) {
     for (char *p = s; *p; p++) {
         *p = toupper(*p);
@@ -139,7 +157,8 @@ int puts(const char *s) {
 } // namespace goesdos
 
 // The modules (one file each in this folder).
-#define GOES_MODULES(X) X(cat) X(cast) X(rep) X(dele) X(clean) X(where) X(pri) X(help)
+#define GOES_MODULES(X) X(cat) X(cast) X(rep) X(dele) X(clean) X(where) X(pri) X(help) \
+    X(st) X(sl) X(dl) X(par)
 #define DECLARE(m) namespace goesdos { namespace goes_##m { void run(); } }
 GOES_MODULES(DECLARE)
 #undef DECLARE
@@ -179,7 +198,12 @@ bool goesnet_run(const char *command, const char *output_file) {
         for (std::string &s : words) {
             argv.push_back(&s[0]);
         }
-        argv.push_back(nullptr);
+        // Modules copy _argv[1] even when there is none: DOS read some bytes
+        // at 0000:0000 then, an empty string here.
+        static char none[1];
+        argv.push_back(none);
+        argv.push_back(none);
+        goesnet_load_vga(goesdos::vga);
         goesdos::_argc = (int) words.size();
         goesdos::_argv = argv.data();
         goesdos::out   = ::fopen(output_file, "wb");

@@ -4,6 +4,7 @@
 // game) need from DOS: Borland io.h on POSIX files, DOS paths mapped into data/,
 // printf to the GOES output in text mode, and the command line as _argc/_argv.
 
+#include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -37,6 +38,20 @@ char *strupr(char *s);
 
 // A DOS path (..\DATA\STARMAP.BIN) as a path in the game folder (data/STARMAP.BIN).
 const char *map_path(const char *dos_path);
+
+// The VGA screen the modules drew progress messages on: 320x200, shown over the
+// middle of the game's last frame by vga_show().
+extern unsigned char vga[64000];
+void vga_show();
+
+// Keyboard (Esc stops a long search).
+int kbhit();
+int getch();
+
+// Borland's rand: the modules' own sequence, apart from the game's.
+void srand(unsigned seed);
+int rand();
+inline int random(int num) { return (int) (((int32_t) rand() * num) / 32768); }
 
 } // namespace goesdos
 
