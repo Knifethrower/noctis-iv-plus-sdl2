@@ -519,6 +519,14 @@ void goesnet_load_vga(unsigned char *vga) {
 }
 
 void goesnet_show_vga(const unsigned char *vga) {
+    // Progress messages come thousands of times in a long search (SL): DOS
+    // wrote them to the screen for free, here once per clock tick.
+    static int32_t last = -1;
+    if (bios_clock() == last) {
+        return;
+    }
+    last = bios_clock();
+
     static uint8_t frame[SW_MAX * SH];
     memcpy(frame, adapted, SW * SH);
     for (int32_t y = 0; y < SH; y++) {
